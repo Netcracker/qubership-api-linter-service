@@ -1,0 +1,23 @@
+qubershipApiLinterService:
+  logLevel: ""
+  replicas: 1 
+  originAllowed: ''
+  image:
+    repository: '' 
+    tag: ''
+ 
+  resource:
+    memory:
+      request: "150Mi"
+      limit: "150Mi"
+    cpu:  
+      request: "30m"
+      limit: "1"
+  env:
+    host: '' 
+  
+  # CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
+
+  
+# NAMESPACE: ''
+  
