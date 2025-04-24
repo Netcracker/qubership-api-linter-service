@@ -1,10 +1,12 @@
 qubershipApiLinterService:
-  logLevel: ""
-  replicas: 1 
-  originAllowed: ''
+  version: ''
+  
+  logLevel: "INFO"
+
   image:
-    repository: '' 
-    tag: ''
+    repository: 'ghcr.io/netcracker/qubership-api-linter-service' 
+    tag: 'latest'
+  replicas: 1 
  
   resource:
     memory:
@@ -13,11 +15,11 @@ qubershipApiLinterService:
     cpu:  
       request: "30m"
       limit: "1"
-  env:
-    host: '' 
-  
-  # CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
 
-  
-# NAMESPACE: ''
+  env:
+    originAllowed: ''
+
+  ingress:
+    enabled: false
+    url: ''
   

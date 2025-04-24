@@ -8,7 +8,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
     nginx.ingress.kubernetes.io/ssl-redirect: 'true'
   labels:
-    app.kubernetes.io/part-of: qubership-apihub-agent
+    app.kubernetes.io/part-of: qubership-api-linter-service
     app.kubernetes.io/managed-by: helm
 spec:
   rules:

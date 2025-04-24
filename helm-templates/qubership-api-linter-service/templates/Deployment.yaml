@@ -40,12 +40,6 @@ spec:
                     value: '{{ .Values.qubershipApiLinterService.logLevel }}'
                 -   name: ORIGIN_ALLOWED
                     value: '{{ .Values.qubershipApiLinterService.originAllowed }}'
-                -   name: PAAS_PLATFORM
-                    value: 'KUBERNETES'
-#                -   name: PAAS_VERSION
-#                    value: '{{ .Values.PAAS_VERSION }}'
-#                -   name: ARTIFACT_DESCRIPTOR_VERSION
-#                    value: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
                 resources:
                     requests:
                         cpu: {{ .Values.qubershipApiLinterService.resource.cpu.request }}
