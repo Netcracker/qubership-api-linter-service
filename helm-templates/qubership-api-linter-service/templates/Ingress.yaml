@@ -1,3 +1,5 @@
+{{ if .Values.qubershipApiLinterService.ingress.enabled }}
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -12,7 +14,7 @@ metadata:
     app.kubernetes.io/managed-by: helm
 spec:
   rules:
-  - host: '{{ .Values.qubershipApiLinterService.env.host }}'
+  - host: '{{ .Values.qubershipApiLinterService.ingress.url }}'
     http:
       paths:
       - path: /
@@ -22,3 +24,5 @@ spec:
             name: qubership-api-linter-service
             port:
               name: web
+---
+{{ end }}
