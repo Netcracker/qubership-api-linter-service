@@ -280,6 +280,7 @@ components:
         - name
         - status
         - createdAt
+        - canBeDeleted
       properties:
         id:
           type: string
@@ -312,6 +313,10 @@ components:
           description: Date of ruleset creation.
           type: string
           format: date-time
+        canBeDeleted:
+          description: Indicates whether the ruleset can be deleted. If true, the ruleset can be deleted. If false, the ruleset is linked to validated package versions and cannot be deleted.
+          type: boolean
+          example: true
     RulesetCreate:
       type: object
       required:
