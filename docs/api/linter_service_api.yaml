@@ -296,7 +296,10 @@ components:
             - active
             - inactive
         activationHistory:
-          description: Information about periods when rulest was activated/deactivated. If empty, means that ruleset was never activated.
+          description: |
+            Information about periods when rulest was activated/deactivated. 
+            If empty, means that ruleset was never activated.
+            Important: Only the latest 100 activation records are returned.
           type: array
           items:
             type: object
