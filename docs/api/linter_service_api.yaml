@@ -11,6 +11,8 @@ security:
 tags:
   - name: Ruleset Management
     description: API related to management of validation rulesets.
+  - name: Validation Result
+    description: API for retrieving Spectral validation results for package versions.
 paths:
   /api/v1/rulesets:
     get:
@@ -115,6 +117,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /api/v1/rulesets/{id}:
+    get:
+      tags:
+        - Ruleset Management
+      summary: Get ruleset metadata (for validation result popup)
+      description: >
+        Returns the ruleset name, status, and activation history.
+      operationId: getRulesetId
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique ruleset ID
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ruleset"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags:
         - Ruleset Management
@@ -247,6 +288,148 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/packages/{packageId}/versions/{version}/validation/summary:
+    get:
+      tags:
+        - Validation Result
+      summary: Get validation summary for a package version
+      description: >
+        Returns a summary of the validation status for the specified package version,
+        including the ruleset used, quality score, and issue counts grouped by severity.
+      operationId: getPackageVersionValidationSummary
+      parameters:
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationSummaryResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/packages/{packageId}/versions/{version}/validation/documents:
+    get:
+      tags:
+        - Validation Result
+      summary: Get validated documents for a package version
+      description: >
+        Retrieves the list of documents that were validated within the specified package version,
+        providing basic metadata like file ID and file name.
+      operationId: getPackageVersionValidationDocuments
+      parameters:
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ValidatedDocument"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/packages/{packageId}/versions/{version}/validation/documents/{fileId}/details:
+    get:
+      tags:
+        - Validation Result
+      summary: Get validation result details for a specific document
+      description: >
+        Returns detailed validation results, including the list of violations, severity levels,
+        line numbers for a specific document within the package version.
+      operationId: getPackageVersionValidationDocumentsDetails
+      parameters:
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationDetailsResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     ErrorResponse:
@@ -338,6 +521,122 @@ components:
           description: YAML file with spectral rules.
           type: string
           format: binary
+    ValidationSummaryResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          description: Current validation status for the package version.
+          type: string
+          enum:
+            - success
+            - inProgress
+            - noResults
+        ruleset:
+          description: Information about the ruleset used for validation.
+          type: object
+          nullable: true
+          properties:
+            id:
+              description: Unique identifier of the ruleset.
+              type: string
+            name:
+              description: Name of the ruleset.
+              type: string
+            status:
+              description: Current status of the ruleset.
+              type: string
+              enum:
+                - active
+                - inactive
+        issuesSummary:
+          description: Summary of validation issues grouped by severity.
+          type: object
+          properties:
+            error:
+              description: Total number of errors.
+              type: integer
+            warning:
+              description: Total number of warnings.
+              type: integer
+            info:
+              description: Total number of informational messages.
+              type: integer
+    ValidatedDocument:
+      type: object
+      required:
+        - fileId
+        - fileName
+      properties:
+        fileId:
+          description: Unique identifier of the document.
+          type: string
+        fileName:
+          description: Name of the validated document.
+          type: string
+        specificationType:
+          description: Type of the specification notation.
+          type: string
+          enum:
+            - openapi-3-1
+            - openapi-3-0
+            - openapi-2-0
+            - json-schema
+            - markdown
+            - graphql-schema
+            - graphapi
+            - introspection
+            - protobuf-3
+            - unknown
+        title:
+          description: Display title for the document in the UI.
+          type: string
+    ValidationDetailsResponse:
+      type: object
+      required:
+        - validatedBy
+        - violations
+        - document
+      properties:
+        validatedBy:
+          description: Metadata about the ruleset that validated the document.
+          type: object
+          properties:
+            rulesetId:
+              description: Unique identifier of the ruleset.
+              type: string
+            rulesetName:
+              description: Name of the ruleset.
+              type: string
+            status:
+              description: Status of the ruleset during validation.
+              type: string
+              enum:
+                - active
+                - inactive
+        violations:
+          description: List of individual validation violations in the document.
+          type: array
+          items:
+            type: object
+            properties:
+              jsonPath:
+                description: JSON path pointing to the location of the issue in the document.
+                type: string
+              severity:
+                description: Severity level of the issue.
+                type: string
+                enum:
+                  - error
+                  - warning
+                  - info
+              message:
+                description: Description of the validation issue.
+                type: string
+              rule:
+                description: Name or identifier of the violated rule.
+                type: string
   securitySchemes:
     BearerAuth:
       type: http
