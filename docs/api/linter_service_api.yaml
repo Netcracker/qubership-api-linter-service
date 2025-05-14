@@ -203,7 +203,7 @@ paths:
     get:
       tags:
         - Ruleset Management
-      summary: Download spetral ruleset file
+      summary: Download spectral ruleset file
       description: >
         Returns the plain YAML content of the ruleset.
       security: []
@@ -318,10 +318,10 @@ components:
           format: date-time
         canBeDeleted:
           description: |
-            Indicates whether the ruleset can be deleted.
-            This flag is calculated based on both the ruleset's current status and its usage.
-            If the ruleset is active or has been used to validate any existing package versions in the system,
-            canBeDeleted is set to false. Only inactive rulesets with no validated package versions can be deleted.
+            Indicates whether the ruleset can be deleted:
+              - canBeDeleted = true - if both of the following conditins are met:
+                  - ruleset is in inactive status
+                  - there is no existing version revision that was validated against current ruleset.
           type: boolean
           example: true
     RulesetCreate:
