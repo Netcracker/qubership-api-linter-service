@@ -7,6 +7,7 @@ servers:
   - url: /
 security:
   - BearerAuth: []
+  - api-key: []
   - PersonalAccessToken: []
 tags:
   - name: Ruleset Management
@@ -18,7 +19,8 @@ paths:
         - Ruleset Management
       summary: Get a list of rulesets.
       description: >
-        Returns a sorted list of rulesets. There is always one active ruleset.
+        Returns a sorted list of rulesets.
+        This operation is available only to users with the `system administrator` role.
       operationId: getRulesets
       parameters:
         - name: page
@@ -45,7 +47,16 @@ paths:
           content:
             application/json:
               schema:
+                description: >
+                  Returns a sorted list of rulesets.  
+                  The sorting follows a strict order:
+                  1. The currently active ruleset (always appears first).
+                  2. Rulesets that have never been activated (in order of creation).
+                  3. All other rulesets, sorted by the latest activation date (most recent first).
+
+                  There is always one active ruleset in the system.
                 type: array
+                minItems: 1
                 items:
                   $ref: "#/components/schemas/Ruleset"
         "401":
@@ -73,9 +84,7 @@ paths:
       description: >
         Allows an admin to create a new ruleset by uploading a YAML file.
         The new ruleset is set to 'Inactive' by default.
-      security:
-        - BearerAuth: []
-        - api-key: []
+        This operation is available only to users with the `system administrator` role.
       operationId: postRuleset
       requestBody:
         required: true
@@ -122,6 +131,7 @@ paths:
       description: >
         Delete a ruleset.\
         Ruleset can be deleted if it is in inactive status and no version validated against this ruleset exist.
+        This operation is available only to users with the `system administrator` role.
       operationId: deleteRuleset
       parameters:
         - name: id
@@ -164,6 +174,7 @@ paths:
       summary: Activate a ruleset
       description: >
         Activate an inactive ruleset. Currently active ruleset is automatically deactivated after new ruleset is activated.
+        This operation is available only to users with the `system administrator` role.
       operationId: postRulesetsActivate
       parameters:
         - name: id
@@ -203,7 +214,7 @@ paths:
     get:
       tags:
         - Ruleset Management
-      summary: Download spectral ruleset file
+      summary: Download Spectral ruleset file
       description: >
         Returns the plain YAML content of the ruleset.
       security: []
@@ -215,12 +226,17 @@ paths:
           required: true
           schema:
             type: string
-        - name: inlineContent
+        - name: disposition
           in: query
-          description: Flag to indicate whether spectral ruleset should be displayed inline in the browser or downloaded as an attachment locally.
+          description: >
+            Controls the content disposition of the response.
+            Use `inline` to display in browser, or `attachment` to trigger download locally.
           schema:
-            type: boolean
-            default: false
+            type: string
+            enum:
+              - inline
+              - attachment
+            default: attachment
       responses:
         "200":
           description: Success
@@ -235,6 +251,12 @@ paths:
                 type: string
                 description: Header is required if inlineContent = false. When present, must have "attachment" and "fileName" parameters.
                 example: attachment; filename="<original file name>.yaml"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                enum: [nosniff]
+                example: nosniff
+                description: Prevents MIME-type sniffing.
         "404":
           description: Not found
           content:
@@ -335,14 +357,20 @@ components:
           type: string
           example: "New Ruleset"
         rulesetFile:
-          description: YAML file with spectral rules.
+          description: YAML file with Spectral rules.
           type: string
           format: binary
   securitySchemes:
     BearerAuth:
       type: http
+      description: Bearer token authentication. Default security scheme for API usage.
       scheme: bearer
       bearerFormat: JWT
+    api-key:
+      type: apiKey
+      description: Api-key authentication.
+      name: api-key
+      in: header
     PersonalAccessToken:
       type: apiKey
       description: Authentication by personal access token.
