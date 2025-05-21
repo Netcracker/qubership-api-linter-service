@@ -244,7 +244,7 @@ paths:
             application/yaml:
               schema:
                 type: string
-                description: YAML content of spetral ruleset file.
+                description: YAML content of Spectral ruleset file.
           headers:
             Content-Disposition:
               schema:
