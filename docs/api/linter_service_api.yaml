@@ -19,7 +19,13 @@ paths:
         - Ruleset Management
       summary: Get a list of rulesets.
       description: >
-        Returns a sorted list of rulesets.
+        Returns a sorted list of rulesets.  
+          The sorting follows a strict order:
+            1. The currently active ruleset (always appears first).
+            2. Rulesets that have never been activated (in order of creation).
+            3. All other rulesets, sorted by the latest activation date (most recent first).
+
+        There is always one active ruleset in the system.
         This operation is available only to users with the `system administrator` role.
       operationId: getRulesets
       parameters:
@@ -47,14 +53,6 @@ paths:
           content:
             application/json:
               schema:
-                description: >
-                  Returns a sorted list of rulesets.  
-                  The sorting follows a strict order:
-                  1. The currently active ruleset (always appears first).
-                  2. Rulesets that have never been activated (in order of creation).
-                  3. All other rulesets, sorted by the latest activation date (most recent first).
-
-                  There is always one active ruleset in the system.
                 type: array
                 minItems: 1
                 items:
@@ -124,6 +122,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /api/v1/rulesets/{id}:
+    get:
+      tags:
+        - Ruleset Management
+      summary: Get ruleset metadata (for validation result popup)
+      description: >
+        Returns the ruleset name, status, and activation history.
+      security: []
+      operationId: getRulesetId
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique ruleset ID
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ruleset"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags:
         - Ruleset Management
