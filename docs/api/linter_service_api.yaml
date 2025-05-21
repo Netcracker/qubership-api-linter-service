@@ -236,7 +236,7 @@ paths:
             enum:
               - inline
               - attachment
-            default: attachment
+            default: inline
       responses:
         "200":
           description: Success
