@@ -125,11 +125,13 @@ paths:
     get:
       tags:
         - Ruleset Management
-      summary: Get ruleset metadata (for validation result popup)
+      summary: Get ruleset metadata
       description: >
         Returns the ruleset name, status, and activation history.
-      security: []
-      operationId: getRulesetId
+      security:
+        - BearerAuth: []
+        - api-key: []
+      operationId: getRulesetById
       parameters:
         - name: id
           in: path
