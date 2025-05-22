@@ -128,9 +128,7 @@ paths:
       summary: Get ruleset metadata
       description: >
         Returns the ruleset name, status, and activation history.
-      security:
-        - BearerAuth: []
-        - api-key: []
+        This operation is available to users with the `viewer` role.
       operationId: getRulesetById
       parameters:
         - name: id
