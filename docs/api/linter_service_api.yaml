@@ -404,13 +404,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/v1/packages/{packageId}/versions/{version}/validation/documents/{documentId}/details:
+  /api/v1/packages/{packageId}/versions/{version}/validation/{rulesetId}/documents/{documentId}/details:
     get:
       tags:
         - Validation Result
-      summary: Get validation result details for a specific document
+      summary: Get validation details for a specific document under a given ruleset
       description: >
-        Returns detailed validation results, including the list of violations, severity levels,
+        Returns detailed validation results for a specific document and ruleset within the package version, including the list of issues, severity levels,
         line numbers for a specific document within the package version.
 
         Sorting of validation issues:
@@ -424,6 +424,11 @@ paths:
           schema:
             type: string
         - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rulesetId
           in: path
           required: true
           schema:
@@ -611,6 +616,7 @@ components:
           items:
             $ref: "#/components/schemas/ValidationResult"
     ValidatedDocument:
+      description: Metadata about the validated document.
       type: object
       required:
         - documentId
@@ -631,10 +637,11 @@ components:
           description: Title of the document.
           type: string
     ValidationDetails:
+      description: Validation details for one document under one ruleset.
       type: object
       required:
         - validatedBy
-        - violations
+        - issues
         - document
       properties:
         validatedBy:
@@ -676,6 +683,8 @@ components:
               message:
                 description: Description of the validation issue.
                 type: string
+        document:
+          $ref: "#/components/schemas/ValidatedDocument"
   securitySchemes:
     BearerAuth:
       type: http
