@@ -130,7 +130,7 @@ paths:
       summary: Get ruleset metadata
       description: >
         Returns the ruleset name, status, and activation history.
-        This operation is available to users with the `viewer` role.
+        This operation requires read permission.
       operationId: getRulesetById
       parameters:
         - name: id
