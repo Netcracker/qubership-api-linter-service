@@ -408,10 +408,9 @@ paths:
     get:
       tags:
         - Validation Result
-      summary: Get validation details for a specific document under a given ruleset
+      summary: Get validation details for a specific document
       description: >
-        Returns detailed validation results for a specific document within the package version, including the list of issues, severity levels,
-        line numbers for a specific document within the package version.
+        Returns detailed validation results for a specific document within the package version, including the list of issues and severity levels.
 
         Sorting of validation issues:
         1. By severity: "error" -> "warning" -> "info".
@@ -624,18 +623,18 @@ components:
       description: Validation details for one document under one ruleset.
       type: object
       required:
-        - validatedBy
+        - ruleset
         - issues
         - document
       properties:
-        validatedBy:
+        ruleset:
           description: Metadata about the ruleset that validated the document.
           type: object
           properties:
-            rulesetId:
+            id:
               description: Unique identifier of the ruleset.
               type: string
-            rulesetName:
+            name:
               description: Name of the ruleset.
               type: string
             status:
