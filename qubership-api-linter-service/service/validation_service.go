@@ -22,7 +22,8 @@ import (
 )
 
 type ValidationService interface {
-	Validate(engine string, files []string) (interface{}, error)
+	ValidateVersion(PackageId string, Version string, Revision int) error
+	ValidateFiles(engine string, files []string) (interface{}, error)
 }
 
 func NewValidationService() ValidationService {
@@ -32,9 +33,14 @@ func NewValidationService() ValidationService {
 type validationServiceImpl struct {
 }
 
+func (v validationServiceImpl) ValidateVersion(PackageId string, Version string, Revision int) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 const tempFolder = "tmp"
 
-func (v *validationServiceImpl) Validate(engine string, files []string) (interface{}, error) {
+func (v validationServiceImpl) ValidateFiles(engine string, files []string) (interface{}, error) {
 	var err error
 	var report interface{}
 	switch engine {

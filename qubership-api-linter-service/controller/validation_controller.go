@@ -84,7 +84,7 @@ func (v *validationControllerImpl) ValidateAPI(w http.ResponseWriter, r *http.Re
 			files = append(files, fileHeader.Filename)
 		}
 	}
-	report, err := v.validationService.Validate(validationEngine, files)
+	report, err := v.validationService.ValidateFiles(validationEngine, files)
 	if err != nil {
 		respondWithError(w, "Failed to calculate report", err)
 		return

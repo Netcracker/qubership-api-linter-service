@@ -127,7 +127,7 @@ func spectralExec(validationData []byte) ([]interface{}, string, int64) {
 	err = cmd.Run()
 	calculationTime := time.Since(start)
 	if err != nil {
-		//spectral process exits with status 1 if validation contains at least one error..
+		//spectral process exits with status 1 if validation contains at least one error...
 		if err.Error() != "exit status 1" {
 			return nil, fmt.Sprintf("failed to get Spectral report: %v", err.Error()), calculationTime.Milliseconds()
 		}

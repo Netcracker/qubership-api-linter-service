@@ -15,6 +15,7 @@
 package main
 
 import (
+	"github.com/Netcracker/qubership-api-linter-service/client"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -28,11 +29,21 @@ import (
 
 func main() {
 	readyChan := make(chan bool)
+
 	systemInfoService, err := service.NewSystemInfoService()
 	if err != nil {
 		panic(err)
 	}
+
+	olricProvider, err := client.NewOlricProvider()
+	if err != nil {
+		log.Error("Failed to create olricProvider: " + err.Error())
+		panic("Failed to create olricProvider: " + err.Error())
+	}
+
 	validationService := service.NewValidationService()
+	publishEventListener := service.NewPublishEventListener(olricProvider, validationService)
+
 	validationController := controller.NewValidationController(validationService)
 	rulesetController := controller.NewRulesetController()
 	healthController := controller.NewHealthController(readyChan)
@@ -47,6 +58,8 @@ func main() {
 	router.HandleFunc("/ready", healthController.HandleReadyRequest).Methods(http.MethodGet)
 	readyChan <- true
 	close(readyChan)
+
+	publishEventListener.Start()
 
 	debug.SetGCPercent(30)
 
