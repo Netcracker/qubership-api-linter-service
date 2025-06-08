@@ -19,7 +19,7 @@ paths:
     get:
       tags:
         - Ruleset Management
-      summary: Get a list of rulesets.
+      summary: Get a list of rulesets
       description: >
         Returns a sorted list of rulesets.  
           The sorting follows a strict order:
@@ -317,6 +317,7 @@ paths:
       description: >
         Returns a summary of the validation status for the specified package version,
         including the ruleset used and issue counts grouped by severity.
+        If the package version contains multiple documents, the returned summary is aggregated across all validated documents.
       operationId: getPackageVersionValidationSummary
       parameters:
         - name: packageId
@@ -535,6 +536,7 @@ components:
           type: boolean
           example: true
     RulesetCreate:
+      description: Parameters for creating a ruleset
       type: object
       required:
         - rulesetName
@@ -548,13 +550,32 @@ components:
           description: YAML file with Spectral rules.
           type: string
           format: binary
+    RulesetMetadata:
+      description: Metadata about the ruleset used for validation.
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          description: Unique identifier of the ruleset.
+          type: string
+        name:
+          description: Name of the ruleset.
+          type: string
+        status:
+          description: Current status of the ruleset.
+          type: string
+          enum:
+            - active
+            - inactive
     ValidationSummary:
+      description: Aggregated validation summary for a package version.
       type: object
       required:
         - apiType
-        - ruleset
         - status
-        - issuesSummary
       properties:
         apiType:
           description: Type of the API.
@@ -562,22 +583,7 @@ components:
           enum:
             - rest
         ruleset:
-          description: Information about the ruleset used for validation.
-          type: object
-          nullable: true
-          properties:
-            id:
-              description: Unique identifier of the ruleset.
-              type: string
-            name:
-              description: Name of the ruleset.
-              type: string
-            status:
-              description: Current status of the ruleset.
-              type: string
-              enum:
-                - active
-                - inactive
+          $ref: "#/components/schemas/RulesetMetadata"
         status:
           description: Current validation status for the package version.
           type: string
@@ -628,21 +634,7 @@ components:
         - document
       properties:
         ruleset:
-          description: Metadata about the ruleset that validated the document.
-          type: object
-          properties:
-            id:
-              description: Unique identifier of the ruleset.
-              type: string
-            name:
-              description: Name of the ruleset.
-              type: string
-            status:
-              description: Status of the ruleset during validation.
-              type: string
-              enum:
-                - active
-                - inactive
+          $ref: "#/components/schemas/RulesetMetadata"
         issues:
           description: List of individual validation issues in the document.
           type: array
