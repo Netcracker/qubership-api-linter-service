@@ -2,7 +2,9 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/Netcracker/qubership-api-linter-service/client"
+	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/buraksezer/olric"
@@ -55,10 +57,22 @@ func (p *publishEventListenerImpl) listen(message olric.DTopicMessage) {
 		return
 	}
 
-	err = p.validationService.ValidateVersion(notification.PackageId, notification.Version, notification.Revision)
+	taskId, err := p.validationService.ValidateVersion(notification.PackageId, notification.Version, notification.Revision, notification.EventId)
 	if err != nil {
-		log.Errorf("PublishEventListener.listen: error in version %+v validation: %v", notification, err)
+		dupEvent := false
+		var customError *exception.CustomError
+		if errors.As(err, &customError) {
+			if customError.Code == exception.DuplicateEvent {
+				log.Infof("PublishEventListener.listen: event with id=%s is already processed", "d")
+				dupEvent = true
+			}
+		}
+		if !dupEvent {
+			log.Errorf("PublishEventListener.listen: error in version %+v validation: %v", "", err)
+		}
+		return
 	}
+	log.Infof("Lint task with id=%s is created for event %+v", taskId, notification)
 }
 
 func (p *publishEventListenerImpl) initVersionPublishedDTopic() {

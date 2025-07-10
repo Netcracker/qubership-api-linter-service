@@ -127,12 +127,15 @@ func getConfig() (*config.Config, error) {
 		cfg.LogVerbosity = 2
 
 		cfg.BindAddr = "localhost"
-
 		cfg.BindPort = getRandomFreePort()
+		cfg.MemberlistConfig.BindAddr = "localhost"
 		cfg.MemberlistConfig.BindPort = getRandomFreePort()
 		cfg.PartitionCount = 5
 
-		cfg.Peers = []string{"192.168.1.133:37610"} // FIXME!!! parametrize!!!!
+		if !isPortFree("localhost", 47376) {
+			// Apihub local port
+			cfg.Peers = []string{"localhost:47376"} // FIXME!!! const!!!!
+		}
 
 		return cfg, nil
 	default:

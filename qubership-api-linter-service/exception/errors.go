@@ -35,3 +35,9 @@ func (c CustomError) Error() string {
 	}
 	return msg
 }
+
+const NoApihubAccess = "200"
+const NoApihubAccessMsg = "No access to Apihub with code: $code. Probably incorrect configuration: api key."
+
+const DuplicateEvent = "10000"
+const DuplicateEventMsg = "Unable to create version lint task: event id $event_id already exists"
