@@ -82,7 +82,8 @@ create table version_lint_task
     details       varchar,                              -- task details
     executor_id   varchar,
     last_active   timestamp without time zone,
-    restart_count integer
+    restart_count integer                     not null,
+    priority      integer DEFAULT 0           NOT NULL
 );
 
 alter table version_lint_task
@@ -113,8 +114,9 @@ create table document_lint_task
     details              varchar,
     executor_id          varchar,
     last_active          timestamp without time zone,
-    restart_count        integer,
-    lint_time_ms         integer
+    restart_count        integer                     not null,
+    lint_time_ms         integer,
+    priority             integer DEFAULT 0           NOT NULL
 );
 
 alter table document_lint_task

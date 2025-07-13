@@ -60,7 +60,7 @@ func (d docTaskProcessorImpl) Start() {
 				continue
 			}
 			if task != nil {
-				d.processDocTask(*task)
+				d.processDocTask(context.Background(), *task)
 			}
 
 			log.Infof("docTaskProcessorImpl running") // TODO: remove
@@ -68,26 +68,37 @@ func (d docTaskProcessorImpl) Start() {
 	})
 }
 
-func (d docTaskProcessorImpl) processDocTask(task entity.DocumentLintTask) {
+func (d docTaskProcessorImpl) handleError(ctx context.Context, docTaskId string, err error) {
+	log.Infof("Doc task %s failed with error: %s", docTaskId, err)
+	setErr := d.docTaskRepo.SetDocTaskStatus(ctx, docTaskId, view.StatusError, err.Error())
+	if setErr != nil {
+		log.Errorf("Error updating status of doc task %s: %s", docTaskId, err)
+	}
+}
+
+func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.DocumentLintTask) {
+	// TODO : hash could be in DocumentLintTask, it will allow to avoid downloading the doc and further processing
+	// TODO: shortcut here
 	sc := secctx.CreateSystemContext()
+
+	// TODO: periodically update last_active in goroutine
 
 	// TODO: get document metadata??
 
 	data, err := d.cl.GetDocumentRawData(sc, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug)
 	if err != nil {
-		// update task with error
+		d.handleError(ctx, task.Id, err)
 		return
 	}
 
 	if len(data) == 0 {
-		// update task with error
+		d.handleError(ctx, task.Id, fmt.Errorf("document data is empty")) // TODO: save lint result!
 		return
 	}
 
 	tempDir := filepath.Join(os.TempDir(), task.Id)
 	if err := os.MkdirAll(tempDir, 0700); err != nil {
-		//d.updateTaskFailure(task, "failed to create temp dir: %v", err)
-		// update task with error
+		d.handleError(ctx, task.Id, fmt.Errorf("error creating temp directory: %s", err))
 		return
 	}
 	defer os.RemoveAll(tempDir)
@@ -97,8 +108,7 @@ func (d docTaskProcessorImpl) processDocTask(task entity.DocumentLintTask) {
 
 	filePath := filepath.Join(tempDir, fileName)
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
-		//d.updateTaskFailure(task, "failed to write document file: %v", err)
-		// update task with error
+		d.handleError(ctx, task.Id, fmt.Errorf("error writing doc file: %s", err))
 		return
 	}
 
@@ -106,51 +116,35 @@ func (d docTaskProcessorImpl) processDocTask(task entity.DocumentLintTask) {
 
 	rs, err := d.ruleSetRepository.GetRulesetById(task.RulesetId)
 	if err != nil {
-		// update task with error
+		d.handleError(ctx, task.Id, fmt.Errorf("error getting ruleset: %s", err))
 		return
 	}
-	rulesetPath := filepath.Join(tempDir, "ruleset.yaml") // TODO: extension from DB???!!!
+	rulesetPath := filepath.Join(tempDir, "ruleset.yaml") // TODO: file name from DB!
 	if err := os.WriteFile(rulesetPath, rs.Data, 0600); err != nil {
-		//d.updateTaskFailure(task, "failed to write document file: %v", err)
-		// update task with error
+		d.handleError(ctx, task.Id, fmt.Errorf("error writing ruleset file: %s", err))
 		return
 	}
 
 	if task.Linter == view.SpectralLinter {
-		// TODO: check if the file is already linted!
-		/*lintResultExists, err := d.docResultRepository.LintResultExists(docHash)
-		if err != nil {
-			// update task with error
-			return
-		}
-		if lintResultExists {
-			// TODO: do not need to run linter!
-			// TODO: just save metadata about the run
-
-			// TODO: what if run lint for the same revision twice????????????????
-		}
-		*/
 		// it might take a long time due to linter lock or just long execution
+
+		log.Infof("Processing doc %s for package %s, version %s@%d by spectral", task.FileId, task.PackageId, task.Version, task.Revision)
 		resultPath, calcTime, err := d.spectralExecutor.LintLocalDoc(filePath, rulesetPath)
 		if err != nil {
-			// update task with error
+			d.handleError(ctx, task.Id, fmt.Errorf("error linting doc with spectral: %s", err))
+			// TODO: error to do linted_document
 			return
 		}
 
 		result, resErr := os.ReadFile(resultPath)
 		if resErr != nil {
-			//log.Errorf("failed to read document validation file: %v", resErr.Error())
-			//return nil, fmt.Sprintf("failed to read Spectral output file: %s", resErr.Error()), calculationTime.Milliseconds()
-
-			// update task with error
+			d.handleError(ctx, task.Id, fmt.Errorf("error reading result file: %s", resErr))
 			return
 		}
 		var report []interface{}
 		err = json.Unmarshal(result, &report)
 		if err != nil {
-			//return nil, fmt.Sprintf("failed to unmarshal Spectral report: %v", err.Error()), calculationTime.Milliseconds()
-
-			// update task with error
+			d.handleError(ctx, task.Id, fmt.Errorf("error unmarshaling result: %s", err))
 			return
 		}
 
@@ -161,7 +155,7 @@ func (d docTaskProcessorImpl) processDocTask(task entity.DocumentLintTask) {
 		LinterVersion := d.spectralExecutor.GetLinterVersion()
 		sumJson, err := json.Marshal(summary)
 		if err != nil {
-			// TODO
+			d.handleError(ctx, task.Id, fmt.Errorf("error marshaling summary: %s", err))
 			return
 		}
 
@@ -169,7 +163,7 @@ func (d docTaskProcessorImpl) processDocTask(task entity.DocumentLintTask) {
 
 		err = json.Unmarshal(sumJson, &sumAsMap)
 		if err != nil {
-			// TODO
+			d.handleError(ctx, task.Id, fmt.Errorf("error unmarshaling summary: %s", err))
 			return
 		}
 
@@ -195,17 +189,13 @@ func (d docTaskProcessorImpl) processDocTask(task entity.DocumentLintTask) {
 			Summary:       sumAsMap,
 		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, docEnt, &lintFileResult)
+		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, calcTime, docEnt, &lintFileResult)
 		if err != nil {
-			// TODO
+			d.handleError(ctx, task.Id, fmt.Errorf("failed to save lint result with error: %s", err))
 			return
 		}
-		log.Println(lintFileResult)
-
-		// TODO: trigger version task update? or just wait
-
 	} else {
-		// update task with error
+		d.handleError(ctx, task.Id, fmt.Errorf("selected linter %s is not supported", task.Linter))
 		return
 	}
 }

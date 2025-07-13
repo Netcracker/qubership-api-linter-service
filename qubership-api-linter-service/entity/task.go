@@ -18,7 +18,8 @@ type VersionLintTask struct {
 	CreatedAt    time.Time       `pg:"created_at,type:timestamp without time zone,notnull"`
 	ExecutorId   string          `pg:"executor_id,type:varchar"`
 	LastActive   time.Time       `pg:"last_active,type:timestamp without time zone,notnull"`
-	RestartCount int             `pg:"restart_count,type:integer"`
+	RestartCount int             `pg:"restart_count,type:integer,notnull,use_zero"`
+	Priority     int             `pg:"priority, type:integer, use_zero"`
 }
 
 type DocumentLintTask struct {
@@ -39,6 +40,7 @@ type DocumentLintTask struct {
 	CreatedAt         time.Time       `pg:"created_at,type:timestamp without time zone,notnull"`
 	ExecutorId        string          `pg:"executor_id,type:varchar"`
 	LastActive        *time.Time      `pg:"last_active,type:timestamp without time zone"`
-	RestartCount      int             `pg:"restart_count,type:integer,notnull"`
-	LintTimeMs        int             `pg:"lint_time_ms,type:integer,notnull"`
+	RestartCount      int             `pg:"restart_count,type:integer,notnull,use_zero"`
+	Priority          int             `pg:"priority, type:integer use_zero"`
+	LintTimeMs        int64           `pg:"lint_time_ms,type:integer,notnull,use_zero"`
 }

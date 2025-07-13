@@ -31,6 +31,10 @@ func NewVersionTaskProcessor(verRepo repository.VersionLintTaskRepository, docRe
 		svc.acquireFreeTasks()
 	})
 
+	utils.SafeAsync(func() {
+		svc.checkDocReady()
+	})
+
 	return svc
 }
 
@@ -142,8 +146,10 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 			Details:           details,
 			CreatedAt:         time.Now(),
 			ExecutorId:        executorId,
-			RestartCount:      0,
 			LastActive:        nil,
+			RestartCount:      0,
+			Priority:          0,
+			LintTimeMs:        0,
 		}
 
 		docTasks = append(docTasks, docTaskEnt)
@@ -163,9 +169,96 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 }
 
 func (v versionTaskProcessorImpl) acquireFreeTasks() {
+	t := time.NewTicker(time.Second * 5)
+	ctx := context.Background()
+	for range t.C {
+		task, err := v.verRepo.FindFreeVersionTask(ctx, v.executorId)
+		if err != nil {
+			log.Errorf("Failed to find free version task: %s", err)
+			continue
+		}
+		if task != nil {
+			v.processVersionLintTask(task.Id)
+		}
+	}
+}
 
-	// TODO: timer
+func (v versionTaskProcessorImpl) checkDocReady() {
+	t := time.NewTicker(time.Second * 5)
+	ctx := context.Background()
+	for range t.C {
+		log.Infof("checkDocReady running") // TODO: remove
 
-	// get task from repo and pass to processVersionLintTask()
+		verLintTasks, err := v.verRepo.GetWaitingForDocTasks(ctx, v.executorId)
+		if err != nil {
+			log.Errorf("Failed to get version tasks in waiting for docs status: %s", err)
+			continue
+		}
+		if len(verLintTasks) == 0 {
+			continue
+		}
+		var verTaskIds []string
+
+		for _, task := range verLintTasks {
+			verTaskIds = append(verTaskIds, task.Id)
+		}
+
+		docLintTasks, err := v.docRepo.GetDocTasksForVersionTasks(ctx, verTaskIds)
+		if err != nil {
+			log.Errorf("Failed to get doc lint tasks for readiness check: %s", err)
+		}
+		// don't expect many entries, so just iterating
+
+		for _, verLintTask := range verLintTasks {
+			var numSucceed int
+			var numFailed int
+			var numNotReady int
+			for _, docLintTask := range docLintTasks {
+				if docLintTask.VersionLintTaskId != verLintTask.Id {
+					continue
+				}
+				switch docLintTask.Status {
+				case view.StatusComplete:
+					numSucceed++
+					break
+				case view.StatusError:
+					numFailed++
+					break
+				case view.StatusNotStarted, view.StatusLinting, view.StatusProcessing:
+					numNotReady++
+					break
+				default:
+					log.Warnf("handleDocReady(): unexpected doc lint task status: %s", docLintTask.Status)
+					break
+				}
+			}
+			if numNotReady > 0 {
+				// version task is not ready yet
+				err = v.verRepo.UpdateStatusAndDetails(ctx, verLintTask.Id, view.StatusWaitingForDocs, "")
+				if err != nil {
+					log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.StatusWaitingForDocs, err)
+					continue
+				}
+			} else {
+				// version task is ready
+				if numFailed > 0 {
+					log.Infof("Version lint task %s is failed because of failed doc tasks", verLintTask.Id)
+					err = v.verRepo.UpdateStatusAndDetails(ctx, verLintTask.Id, view.StatusError, fmt.Sprintf("%d doc lint task(s) failed", numFailed))
+					if err != nil {
+						log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.StatusError, err)
+						continue
+					}
+				} else {
+					log.Infof("Version lint task %s successfully completed", verLintTask.Id)
+					err = v.verRepo.UpdateStatusAndDetails(ctx, verLintTask.Id, view.StatusComplete, "")
+					if err != nil {
+						log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.StatusComplete, err)
+						continue
+					}
+				}
+			}
+		}
+
+	}
 
 }

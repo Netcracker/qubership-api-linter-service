@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/db"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
@@ -11,8 +12,11 @@ import (
 )
 
 type DocLintTaskRepository interface {
+	SetDocTaskStatus(ctx context.Context, docTaskId string, status view.TaskStatus, details string) error
 	SaveDocTasksAndUpdVer(ctx context.Context, ents []entity.DocumentLintTask, versionTaskId string) error
 	FindFreeDocTask(ctx context.Context, executorId string) (*entity.DocumentLintTask, error)
+	//CheckDocTasksFinished(ctx context.Context, verTaskIds []string) ([]string, error)
+	GetDocTasksForVersionTasks(ctx context.Context, verTaskIds []string) ([]entity.DocumentLintTask, error)
 }
 
 func NewDocLintTaskRepository(cp db.ConnectionProvider) DocLintTaskRepository {
@@ -21,6 +25,20 @@ func NewDocLintTaskRepository(cp db.ConnectionProvider) DocLintTaskRepository {
 
 type docLintTaskRepositoryImpl struct {
 	cp db.ConnectionProvider
+}
+
+func (d docLintTaskRepositoryImpl) SetDocTaskStatus(ctx context.Context, docTaskId string, status view.TaskStatus, details string) error {
+	var verEnt entity.VersionLintTask
+
+	_, err := d.cp.GetConnection().WithContext(ctx).Model(&verEnt).
+		Set("status=?", status).
+		Set("details=?", details).
+		Set("last_active=?", time.Now()).
+		Where("id=?", docTaskId).Update()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (d docLintTaskRepositoryImpl) SaveDocTasksAndUpdVer(ctx context.Context, ents []entity.DocumentLintTask, versionTaskId string) error {
@@ -139,104 +157,15 @@ func (d docLintTaskRepositoryImpl) FindFreeDocTask(ctx context.Context, executor
 	return result, nil
 }
 
-/*
-func (b buildRepositoryImpl) FindAndTakeFreeBuild(builderId string) (*entity.BuildEntity, error) {
-	var result *entity.BuildEntity
-	var err error
-	for {
-		buildFailed := false
-		err = b.cp.GetConnection().RunInTransaction(context.Background(), func(tx *pg.Tx) error {
-			var ents []entity.BuildEntity
+func (d docLintTaskRepositoryImpl) GetDocTasksForVersionTasks(ctx context.Context, verTaskIds []string) ([]entity.DocumentLintTask, error) {
+	var result []entity.DocumentLintTask
 
-			_, err := tx.Query(&ents, queryItemToBuild)
-			if err != nil {
-				if err == pg.ErrNoRows {
-					return nil
-				}
-				return fmt.Errorf("failed to find free build: %w", err)
-			}
-			if len(ents) > 0 {
-				result = &ents[0]
-
-				// we got build candidate
-				if result.RestartCount >= 2 {
-					query := tx.Model(result).
-						Where("build_id = ?", result.BuildId).
-						Set("status = ?", view.StatusError).
-						Set("details = ?", fmt.Sprintf("Restart count exceeded limit. Details: %v", result.Details)).
-						Set("last_active = now()")
-					_, err := query.Update()
-					if err != nil {
-						return err
-					}
-					buildFailed = true
-					return nil
-				}
-
-				// take free build
-				isFirstRun := result.Status == string(view.StatusNotStarted)
-
-				if !isFirstRun {
-					result.RestartCount += 1
-				}
-
-				result.Status = string(view.StatusRunning)
-				result.BuilderId = builderId
-				// TODO: add optimistic lock as well?
-
-				_, err = tx.Model(result).
-					Set("status = ?status").
-					Set("builder_id = ?builder_id").
-					Set("restart_count = ?restart_count").
-					Set("last_active = now()").
-					Where("build_id = ?", result.BuildId).
-					Update()
-				if err != nil {
-					return fmt.Errorf("unable to update build status during takeBuild: %w", err)
-				}
-
-				return nil
-			}
-			return nil
-		})
-		if buildFailed {
-			continue
-		}
-		break
-	}
+	err := d.cp.GetConnection().WithContext(ctx).Model(&result).Where("version_lint_task_id in (?)", pg.In(verTaskIds)).Select()
 	if err != nil {
+		if errors.Is(err, pg.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return result, nil
 }
-*/
-
-/*
-create table document_lint_task
-(
-    id                   varchar
-        constraint doc_tasks_pk primary key,
-    version_lint_task_id varchar                     not null,
-
-    package_id           varchar                     not null, -- or join version_lint_task?
-    version              varchar                     not null, -- or join version_lint_task?
-    revision             integer                     not null, -- or join version_lint_task?
-    file_id              varchar                     not null,
-
-    api_type             varchar                     not null,
-    linter               varchar                     not null,
-    ruleset_id           varchar
-        constraint ruleset_document_lint_task_ruleset_id_fk
-            references ruleset (id),
-    created_at           timestamp without time zone not null,
-
-    status               varchar                     not null, -- task status
-    details              varchar,
-    executor_id          varchar,
-    last_active          timestamp without time zone,
-    restart_count        integer,
-    lint_time_ms         integer
-);
-*/
-
-// TODO: need to update version task status to doc_running

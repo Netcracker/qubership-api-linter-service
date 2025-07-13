@@ -59,6 +59,7 @@ func (v validationServiceImpl) ValidateVersion(packageId string, version string,
 		LastActive:   time.Now(),
 		EventId:      eventId, // optional
 		RestartCount: 0,
+		Priority:     0,
 	}
 	err := v.repo.SaveVersionTask(context.Background(), ent)
 	if err != nil {

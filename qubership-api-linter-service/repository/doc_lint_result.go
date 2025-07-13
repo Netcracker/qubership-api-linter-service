@@ -9,8 +9,8 @@ import (
 )
 
 type DocResultRepository interface {
-	LintResultExists(dataHash string) (bool, error)
-	SaveLintResult(ctx context.Context, docLintTaskId string, document entity.LintedDocument, result *entity.LintFileResult) error
+	LintResultExists(ctx context.Context, dataHash string) (bool, error)
+	SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, document entity.LintedDocument, result *entity.LintFileResult) error
 }
 
 func NewDocResultRepository(cp db.ConnectionProvider) DocResultRepository {
@@ -21,19 +21,19 @@ type docResultRepositoryImpl struct {
 	cp db.ConnectionProvider
 }
 
-func (d docResultRepositoryImpl) LintResultExists(dataHash string) (bool, error) {
+func (d docResultRepositoryImpl) LintResultExists(ctx context.Context, dataHash string) (bool, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, document entity.LintedDocument, result *entity.LintFileResult) error {
+func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, document entity.LintedDocument, result *entity.LintFileResult) error {
 	return d.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
-		_, err := tx.Model(&document).Insert()
+		_, err := tx.Model(&document).OnConflict("(package_id, version, revision, file_id, ruleset_id) do update").Insert()
 		if err != nil {
 			return err
 		}
 		if result != nil {
-			_, err = tx.Model(result).Insert()
+			_, err = tx.Model(result).OnConflict("(data_hash, ruleset_id) do update").Insert()
 			if err != nil {
 				return err
 			}
@@ -42,6 +42,7 @@ func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTask
 		_, err = tx.Model(docLintTask).
 			Set("status = ?", view.StatusComplete).
 			Set("last_active = now()").
+			Set("lint_time_ms = ?", lintTimeMs).
 			Where("id = ?", docLintTaskId).
 			Update()
 		if err != nil {
