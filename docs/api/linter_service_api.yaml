@@ -358,6 +358,64 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/packages/{packageId}/versions/{version}/validation/run:
+    post:
+      tags:
+        - Validation Result
+      summary: Run manual validation for a package version
+      description: >
+        Manually run validation for a specific package version. 
+        This is used when linter service was deployed after version publication.
+        This operation is available only to users with publication rights.
+      operationId: runPackageVersionValidation
+      parameters:
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique package identifier
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Package version
+      responses:
+        "202":
+          description: Validation started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Validation started successfully"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Package version not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/packages/{packageId}/versions/{version}/validation/documents:
     get:
       tags:
@@ -489,6 +547,7 @@ components:
       required:
         - id
         - name
+        - fileName
         - status
         - createdAt
         - canBeDeleted
@@ -501,6 +560,10 @@ components:
           type: string
           description: Unique name of the ruleset.
           example: "OpenAPI Quality Ruleset"
+        fileName:
+          type: string
+          description: Original filename of the uploaded ruleset file
+          example: "R2025Ruleset.yaml"
         status:
           description: Status of the ruleset.
           type: string
@@ -557,6 +620,7 @@ components:
       required:
         - id
         - name
+        - fileName
         - status
       properties:
         id:
@@ -565,6 +629,10 @@ components:
         name:
           description: Name of the ruleset.
           type: string
+        fileName:
+          type: string
+          description: Original filename of the uploaded ruleset file
+          example: "R2025Ruleset.yaml"
         status:
           description: Current status of the ruleset.
           type: string
@@ -592,6 +660,7 @@ components:
             - success
             - inProgress
             - notValidated
+            - failed
         issuesSummary:
           description: Summary of validation issues grouped by severity.
           type: object
@@ -605,6 +674,13 @@ components:
             info:
               description: Total number of informational messages.
               type: integer
+        failedDocuments:
+          description: List of document titles that failed during validation
+          type: array
+          items:
+            type: string
+            description: Title of the failed document
+          example: ["Document_name_1", "Document_name_2"]
     ValidatedDocument:
       description: Metadata about the validated document.
       type: object
