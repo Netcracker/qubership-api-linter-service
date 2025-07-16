@@ -14,6 +14,8 @@ tags:
     description: API related to management of validation rulesets.
   - name: Validation Result
     description: API for retrieving Spectral validation results for package versions.
+  - name: Validation Operations
+    description: API operations for managing validation processes.
 paths:
   /api/v1/rulesets:
     get:
@@ -126,7 +128,7 @@ paths:
   /api/v1/rulesets/{id}:
     get:
       tags:
-        - Validation Result
+        - Ruleset Management
       summary: Get ruleset metadata
       description: >
         Returns the ruleset name, status, and activation history.
@@ -290,7 +292,7 @@ paths:
               schema:
                 type: string
                 description: Header is required if inlineContent = false. When present, must have "attachment" and "fileName" parameters.
-                example: attachment; filename="<original file name>.yaml"
+                example: attachment; filename="<file name>.yaml"
             X-Content-Type-Options:
               schema:
                 type: string
@@ -361,7 +363,7 @@ paths:
   /api/v1/packages/{packageId}/versions/{version}/validation/run:
     post:
       tags:
-        - Validation Result
+        - Validation Operations
       summary: Run manual validation for a package version
       description: >
         Manually run validation for a specific package version. 
@@ -562,7 +564,7 @@ components:
           example: "OpenAPI Quality Ruleset"
         fileName:
           type: string
-          description: Original filename of the uploaded ruleset file
+          description: Filename of the ruleset file.
           example: "R2025Ruleset.yaml"
         status:
           description: Status of the ruleset.
@@ -631,7 +633,7 @@ components:
           type: string
         fileName:
           type: string
-          description: Original filename of the uploaded ruleset file
+          description: Filename of the ruleset file.
           example: "R2025Ruleset.yaml"
         status:
           description: Current status of the ruleset.
