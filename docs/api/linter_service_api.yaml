@@ -681,8 +681,8 @@ components:
           type: array
           items:
             type: string
-            description: Slug of the failed document
-          example: ["Document_name_1", "Document_name_2"]
+            description: Name of the failed document
+          example: ["Document_name_1.yaml", "Document_name_2.json"]
     ValidatedDocument:
       description: Metadata about the validated document.
       type: object
