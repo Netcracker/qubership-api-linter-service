@@ -37,7 +37,7 @@ type healthControllerImpl struct {
 	ready bool
 }
 
-func (h healthControllerImpl) HandleReadyRequest(w http.ResponseWriter, r *http.Request) {
+func (h *healthControllerImpl) HandleReadyRequest(w http.ResponseWriter, r *http.Request) {
 	if h.ready {
 		w.WriteHeader(http.StatusOK) // any code in (>=200 & <400)
 		return
@@ -46,9 +46,8 @@ func (h healthControllerImpl) HandleReadyRequest(w http.ResponseWriter, r *http.
 	}
 }
 
-func (h healthControllerImpl) HandleLiveRequest(w http.ResponseWriter, r *http.Request) {
+func (h *healthControllerImpl) HandleLiveRequest(w http.ResponseWriter, r *http.Request) {
 	// Just return 200 at this moment
-	// TODO: but maybe need to check some internal status
 	w.WriteHeader(http.StatusOK)
 }
 

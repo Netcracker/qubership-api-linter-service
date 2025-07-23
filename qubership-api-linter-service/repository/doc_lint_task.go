@@ -123,7 +123,6 @@ func (d docLintTaskRepositoryImpl) FindFreeDocTask(ctx context.Context, executor
 
 				result.Status = view.TaskStatusProcessing
 				result.ExecutorId = executorId
-				// TODO: add optimistic lock as well?
 
 				_, err = tx.Model(result).
 					Set("status = ?status").

@@ -18,7 +18,6 @@ type VersionLintTaskRepository interface {
 	SaveVersionTask(ctx context.Context, ent entity.VersionLintTask) error
 	GetTaskById(ctx context.Context, taskId string) (*entity.VersionLintTask, error)
 	GetRunningTaskForVersion(ctx context.Context, packageId, version string, revision int) ([]entity.VersionLintTask, error)
-	//UpdateStatusAndDetails(ctx context.Context, taskId string, status view.TaskStatus, details string) error
 	IncRestartCount(ctx context.Context, taskId string) error
 	FindFreeVersionTask(ctx context.Context, executorId string) (*entity.VersionLintTask, error)
 	GetWaitingForDocTasks(ctx context.Context, executorId string) ([]entity.VersionLintTask, error)
@@ -101,20 +100,6 @@ func (r *versionLintTaskRepositoryImpl) SaveVersionTask(ctx context.Context, ent
 	}
 	return nil
 }
-
-/*func (r *versionLintTaskRepositoryImpl) UpdateStatusAndDetails(ctx context.Context, taskId string, status view.TaskStatus, details string) error {
-	var ent entity.VersionLintTask
-	_, err := r.cp.GetConnection().ModelContext(ctx, &ent).
-		Set("status = ?", status).
-		Set("details = ?", details).
-		Set("last_active = ?", time.Now()).
-		Where("id = ?", taskId).
-		Update()
-
-	// FIXME: update linted version is exists!!!
-
-	return err
-}*/
 
 func (r *versionLintTaskRepositoryImpl) VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion) error {
 	return r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {

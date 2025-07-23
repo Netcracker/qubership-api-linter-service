@@ -81,6 +81,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 		return nil, err
 	}
 	if lintedVer == nil {
+		// version is not linted (yet), need to check if lint is planned/in progress
 		varTasks, err := v.verTaskRepo.GetRunningTaskForVersion(ctx, packageId, ver, rev)
 		if err != nil {
 			return nil, err
@@ -95,20 +96,9 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 			return nil, err
 		}
 
-		// FIXME: reimplement and make generic!!!!
-		rulesetMap := make(map[string]entity.Ruleset)
-		for _, doc := range docTasks {
-			_, exists := rulesetMap[doc.RulesetId]
-			if !exists {
-				ruleset, err := v.rulesetRepository.GetRulesetById(doc.RulesetId)
-				if err != nil {
-					return nil, err
-				}
-				if ruleset == nil {
-					return nil, fmt.Errorf("ruleset with id %s not found", doc.RulesetId)
-				}
-				rulesetMap[doc.RulesetId] = *ruleset
-			}
+		rulesetMap, err := v.makeRulesetMap(makeRulesetIdsFromTasks(docTasks))
+		if err != nil {
+			return nil, err
 		}
 		resultMap := make(map[view.ApiType]view.ValidationSummaryForApiType)
 		for _, doc := range docTasks {
@@ -119,7 +109,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 
 			resultMap[doc.APIType] = view.ValidationSummaryForApiType{
 				ApiType: doc.APIType,
-				Status:  "inProgress", // TODO: fix
+				Status:  view.VersionStatusInProgress,
 				Ruleset: &view.RulesetMetadata{
 					Id:       ruleset.Id,
 					Name:     ruleset.Name,
@@ -138,22 +128,11 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 		return result, nil
 	}
 
-	rulesetMap := make(map[string]entity.Ruleset)
-	resultMap := make(map[view.ApiType]view.ValidationSummaryForApiType)
-
-	for _, doc := range lintedDocs {
-		_, exists := rulesetMap[doc.RulesetId]
-		if !exists {
-			ruleset, err := v.rulesetRepository.GetRulesetById(doc.RulesetId)
-			if err != nil {
-				return nil, err
-			}
-			if ruleset == nil {
-				return nil, fmt.Errorf("ruleset with id %s not found", doc.RulesetId)
-			}
-			rulesetMap[doc.RulesetId] = *ruleset
-		}
+	rulesetMap, err := v.makeRulesetMap(makeRulesetIdsFromLintedDocs(lintedDocs))
+	if err != nil {
+		return nil, err
 	}
+	resultMap := make(map[view.ApiType]view.ValidationSummaryForApiType)
 
 	for _, doc := range lintedDocs {
 		resultSummary, err := v.lintResultRepository.GetLintResultSummary(ctx, doc.DataHash, doc.RulesetId)
@@ -189,16 +168,9 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 
 		value, exists := resultMap[doc.SpecificationType]
 		if !exists {
-			/*ruleset, err := v.rulesetRepository.GetRulesetById(doc.RulesetId)
-			if err != nil {
-				return nil, err
-			}
-			if ruleset == nil {
-				return nil, fmt.Errorf("ruleset with id %s not found", doc.RulesetId)
-			}*/
 			resultMap[doc.SpecificationType] = view.ValidationSummaryForApiType{
 				ApiType: doc.SpecificationType,
-				Status:  lintedVer.LintStatus, // TODO: extract for the whole version ?
+				Status:  lintedVer.LintStatus,
 				Ruleset: &view.RulesetMetadata{
 					Id:       ruleset.Id,
 					Name:     ruleset.Name,
@@ -209,7 +181,6 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 				FailedDocuments: nil,
 			}
 		} else {
-			// TODO: check/update value.Status
 			value.IssuesSummary.Append(*summ)
 			resultMap[doc.SpecificationType] = value
 		}
@@ -373,3 +344,37 @@ func (v validationServiceImpl) ValidateVersion(packageId string, version string,
 }
 
 const tempFolder = "tmp"
+
+func (v validationServiceImpl) makeRulesetMap(rulesetIds []string) (map[string]entity.Ruleset, error) {
+	rulesetMap := make(map[string]entity.Ruleset)
+	for _, rulesetId := range rulesetIds {
+		_, exists := rulesetMap[rulesetId]
+		if !exists {
+			ruleset, err := v.rulesetRepository.GetRulesetById(rulesetId)
+			if err != nil {
+				return nil, err
+			}
+			if ruleset == nil {
+				return nil, fmt.Errorf("ruleset with id %s not found", rulesetId)
+			}
+			rulesetMap[rulesetId] = *ruleset
+		}
+	}
+	return rulesetMap, nil
+}
+
+func makeRulesetIdsFromTasks(tasks []entity.DocumentLintTask) []string {
+	var result []string
+	for _, task := range tasks {
+		result = append(result, task.RulesetId)
+	}
+	return result
+}
+
+func makeRulesetIdsFromLintedDocs(tasks []entity.LintedDocument) []string {
+	var result []string
+	for _, task := range tasks {
+		result = append(result, task.RulesetId)
+	}
+	return result
+}
