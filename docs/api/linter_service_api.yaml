@@ -720,13 +720,13 @@ components:
           items:
             type: object
             required:
-              - jsonPath
+              - path
               - severity
               - message
             properties:
-              jsonPath:
+              path:
                 description: >
-                  JSONPath expression pointing to the location of the issue in the document,
+                  Path segments thar are pointing to the location of the issue in the document,
                   conforming to the syntax defined in IETF RFC 9535:
                   https://datatracker.ietf.org/doc/html/rfc9535
                 type: string
