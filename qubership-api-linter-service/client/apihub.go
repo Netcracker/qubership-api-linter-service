@@ -21,8 +21,11 @@ type ApihubClient interface {
 	GetRsaPublicKey(ctx secctx.SecurityContext) (*view.PublicKey, error)
 	GetApiKeyByKey(apiKey string) (*view.ApihubApiKeyView, error)
 
+	GetVersion(ctx secctx.SecurityContext, id, version string) (*view.VersionContent, error)
+
 	GetVersionDocuments(ctx secctx.SecurityContext, packageId, version string) (*view.VersionDocuments, error)
 	GetDocumentRawData(ctx secctx.SecurityContext, packageId, version string, fileId string) ([]byte, error)
+
 	/*GetPackageByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (*view.SimplePackage, error)
 	GetPackageIdByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (string, string, error)
 	GetPackageById(ctx secctx.SecurityContext, id string) (*view.SimplePackage, error)
@@ -150,6 +153,29 @@ func (a apihubClientImpl) GetRsaPublicKey(ctx secctx.SecurityContext) (*view.Pub
 		Value: resp.Body(),
 	}
 	return &publicKey, nil
+}
+
+func (a apihubClientImpl) GetVersion(ctx secctx.SecurityContext, id, version string) (*view.VersionContent, error) {
+	req := a.makeRequest(ctx)
+	resp, err := req.Get(fmt.Sprintf("%s/api/v3/packages/%s/versions/%s", a.apihubUrl, url.PathEscape(id), url.PathEscape(version)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get version %s for id %s: %s", version, id, err.Error())
+	}
+	if resp.StatusCode() != http.StatusOK {
+		if resp.StatusCode() == http.StatusNotFound {
+			return nil, nil
+		}
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return nil, authErr
+		}
+		return nil, fmt.Errorf("failed to get version %s for id %s: status code %d %v", version, id, resp.StatusCode(), err)
+	}
+	var pVersion view.VersionContent
+	err = json.Unmarshal(resp.Body(), &pVersion)
+	if err != nil {
+		return nil, err
+	}
+	return &pVersion, nil
 }
 
 func (a apihubClientImpl) GetVersionDocuments(ctx secctx.SecurityContext, packageId, version string) (*view.VersionDocuments, error) {
@@ -369,29 +395,6 @@ func (a apihubClientImpl) GetDocumentRawData(ctx secctx.SecurityContext, package
 			return nil, err
 		}
 		return &res, nil
-	}
-
-	func (a apihubClientImpl) GetVersionContent(ctx secctx.SecurityContext, id, version string) (*view.VersionContent, error) {
-		req := a.makeRequest(ctx)
-		resp, err := req.Get(fmt.Sprintf("%s/api/v2/packages/%s/versions/%s", a.apihubUrl, url.PathEscape(id), url.PathEscape(version)))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get version %s for id %s: %s", version, id, err.Error())
-		}
-		if resp.StatusCode() != http.StatusOK {
-			if resp.StatusCode() == http.StatusNotFound {
-				return nil, nil
-			}
-			if authErr := checkUnauthorized(resp); authErr != nil {
-				return nil, authErr
-			}
-			return nil, fmt.Errorf("failed to get version %s for id %s: status code %d %v", version, id, resp.StatusCode(), err)
-		}
-		var pVersion view.VersionContent
-		err = json.Unmarshal(resp.Body(), &pVersion)
-		if err != nil {
-			return nil, err
-		}
-		return &pVersion, nil
 	}
 
 	func (a apihubClientImpl) GetVersions(ctx secctx.SecurityContext, packageId string, searchReq view.VersionSearchRequest) (*view.PublishedVersionsView, error) {

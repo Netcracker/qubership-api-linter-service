@@ -27,29 +27,35 @@ VALUES (1, false);
 
 create table ruleset
 (
-    id         varchar
+    id             varchar
         constraint ruleset_pk
             primary key,
-    name       varchar                     not null,
-    status     varchar                     not null,
-    data       bytea                       not null,
-    created_at timestamp without time zone not null,
-    created_by varchar,
-    deleted_at timestamp without time zone,
-    deleted_by varchar,
-    api_type   varchar                     not null,
-    linter     varchar                     not null
+    name           varchar                     not null,
+    status         varchar                     not null,
+    data           bytea                       not null,
+    created_at     timestamp without time zone not null,
+    created_by     varchar,
+    deleted_at     timestamp without time zone,
+    deleted_by     varchar,
+    api_type       varchar                     not null,
+    linter         varchar                     not null,
+    file_name      varchar                     not null,
+    can_be_deleted bool                        NOT NULL,
+    constraint ruleset_name_unique unique (name)
 );
 
 insert into ruleset
-values ('f4bd4da4-56d4-42ea-9667-36fb1a4c53c6', 'default', 'active',
-        'extends: [[spectral:oas, recommended]]'::BYTEA, now(), 'system', null, null, 'openapi-2-0', 'spectral');
+values ('f4bd4da4-56d4-42ea-9667-36fb1a4c53c6', 'default-openapi-2-0', 'active',
+        'extends: [[spectral:oas, recommended]]'::BYTEA, now(), 'system', null, null, 'openapi-2-0', 'spectral',
+        'default-openapi-2-0.yaml', false);
 insert into ruleset
-values ('bc356817-06dc-45a7-a91b-af0d9ad7a2eb', 'default', 'active',
-        'extends: [[spectral:oas, recommended]]'::BYTEA, now(), 'system', null, null, 'openapi-3-0', 'spectral');
+values ('bc356817-06dc-45a7-a91b-af0d9ad7a2eb', 'default-openapi-3-0', 'active',
+        'extends: [[spectral:oas, recommended]]'::BYTEA, now(), 'system', null, null, 'openapi-3-0', 'spectral',
+        'default-openapi-3-0.yaml', false);
 insert into ruleset
-values ('e3fcd2b3-187b-4bcf-970d-d6dbcf30a83a', 'default', 'active',
-        'extends: [[spectral:oas, recommended]]'::BYTEA, now(), 'system', null, null, 'openapi-3-1', 'spectral');
+values ('e3fcd2b3-187b-4bcf-970d-d6dbcf30a83a', 'default-openapi-3-1', 'active',
+        'extends: [[spectral:oas, recommended]]'::BYTEA, now(), 'system', null, null, 'openapi-3-1', 'spectral',
+        'default-openapi-3-1.yaml', false);
 
 create table ruleset_activation_history
 (
@@ -67,6 +73,7 @@ values ('bc356817-06dc-45a7-a91b-af0d9ad7a2eb', now(), 'system');
 insert into ruleset_activation_history
 values ('e3fcd2b3-187b-4bcf-970d-d6dbcf30a83a', now(), 'system');
 
+---------- tasks -------------
 
 create table version_lint_task
 (
@@ -123,6 +130,7 @@ alter table document_lint_task
     add constraint document_lint_task_version_lint_task_id_fk
         foreign key (version_lint_task_id) references version_lint_task (id);
 
+-------- results ----------
 
 create table linted_version
 (
@@ -145,19 +153,21 @@ create table linted_document
     version            varchar not null,
     revision           integer not null,
     file_id            varchar not null,
-    file_name          varchar not null,
+    slug               varchar not null,
     specification_type varchar not null,
-    title              varchar not null,
-    ruleset_id         varchar not null, -- TODO: FK
+    ruleset_id         varchar not null,
     data_hash          varchar not null,
-
     lint_status        varchar not null,
     lint_details       varchar,
 
     constraint linted_document_pk
-        primary key (package_id, version, revision, file_id, ruleset_id)
+        primary key (package_id, version, revision, file_id),
+    constraint linted_document_ruleset_fk
+        foreign key (ruleset_id) references ruleset (id)
 );
 
+create index linted_document_package_id_version_revision_slug_index
+    on linted_document (package_id, version, revision, slug);
 
 create table lint_file_result
 (
@@ -171,8 +181,4 @@ create table lint_file_result
     constraint lint_file_result_pk
         primary key (data_hash, ruleset_id) -- TODO: add linter_version to PK???
 );
-
-
--- TODO: insert default ruleset!
-
 

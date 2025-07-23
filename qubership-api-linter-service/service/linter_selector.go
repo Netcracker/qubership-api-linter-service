@@ -11,10 +11,10 @@ type LinterSelectorService interface {
 }
 
 type linterSelectorServiceImpl struct {
-	repo repository.RuleSetRepository
+	repo repository.RulesetRepository
 }
 
-func NewLinterSelectorService(repo repository.RuleSetRepository) LinterSelectorService {
+func NewLinterSelectorService(repo repository.RulesetRepository) LinterSelectorService {
 	return &linterSelectorServiceImpl{
 		repo: repo,
 	}

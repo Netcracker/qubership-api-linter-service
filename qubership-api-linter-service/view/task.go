@@ -3,10 +3,10 @@ package view
 type TaskStatus string
 
 const (
-	StatusNotStarted     TaskStatus = "not_started"
-	StatusProcessing     TaskStatus = "processing" // todo version only?
-	StatusWaitingForDocs TaskStatus = "waiting_for_docs"
-	StatusLinting        TaskStatus = "linting" // docs only
-	StatusComplete       TaskStatus = "complete"
-	StatusError          TaskStatus = "error"
+	TaskStatusNotStarted     TaskStatus = "not_started"
+	TaskStatusProcessing     TaskStatus = "processing" // todo version only?
+	TaskStatusWaitingForDocs TaskStatus = "waiting_for_docs"
+	TaskStatusLinting        TaskStatus = "linting" // docs only
+	TaskStatusComplete       TaskStatus = "complete"
+	TaskStatusError          TaskStatus = "error"
 )

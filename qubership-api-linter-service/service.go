@@ -32,6 +32,8 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
+
+	_ "net/http/pprof"
 )
 
 func main() {
@@ -120,10 +122,12 @@ func main() {
 	docLintTaskRepository := repository.NewDocLintTaskRepository(cp)
 	ruleSetRepository := repository.NewRuleSetRepository(cp)
 	docResultRepository := repository.NewDocResultRepository(cp)
+	versionResultRepository := repository.NewVersionResultRepository(cp)
+	lintResultRepository := repository.NewLintResultRepository(cp)
 
 	linterSelectorService := service.NewLinterSelectorService(ruleSetRepository)
 
-	versionTaskProcessor := service.NewVersionTaskProcessor(versionLintTaskRepository, docLintTaskRepository, apihubClient, linterSelectorService, executorId)
+	versionTaskProcessor := service.NewVersionTaskProcessor(versionLintTaskRepository, docLintTaskRepository, versionResultRepository, apihubClient, linterSelectorService, executorId)
 	spectralExecutor, err := service.NewSpectralExecutor(systemInfoService.GetSpectralBinPath())
 	if err != nil {
 		log.Fatalf("Failed to create Spectral executor: %s", err.Error())
@@ -131,17 +135,31 @@ func main() {
 
 	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, apihubClient, spectralExecutor, executorId)
 
-	validationService := service.NewValidationService(versionLintTaskRepository, versionTaskProcessor, executorId)
+	validationService := service.NewValidationService(versionLintTaskRepository, versionResultRepository, lintResultRepository, ruleSetRepository, versionTaskProcessor, apihubClient, executorId)
 	publishEventListener := service.NewPublishEventListener(olricProvider, validationService)
+	rulesetService := service.NewRulesetService(ruleSetRepository)
 
 	validationController := controller.NewValidationController(validationService)
-	rulesetController := controller.NewRulesetController()
+
+	validationResultController := controller.NewValidationResultController(validationService)
+
+	rulesetController := controller.NewRulesetController(rulesetService)
 	healthController := controller.NewHealthController(readyChan)
 
 	r.HandleFunc("/api/validate", security.Secure(validationController.ValidateAPI)).Methods(http.MethodPost)
-	r.HandleFunc("/ruleset", rulesetController.GetRulesetFile).Methods(http.MethodGet)
-	r.HandleFunc("/rulesetjs", rulesetController.GetJSRulesetFile).Methods(http.MethodGet)
-	r.HandleFunc("/rulesetjson", rulesetController.GetJsonRulesetFile).Methods(http.MethodGet)
+
+	// TODO: auth!!!!!
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", validationResultController.GetValidationSummaryForVersion).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents", validationResultController.GetValidatedDocumentsForVersion).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", validationResultController.GetValidationResultForDocument).Methods(http.MethodGet)
+
+	////////
+
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", rulesetController.GetRuleset).Methods(http.MethodGet)
+
+	// TODO:
 
 	r.HandleFunc("/live", healthController.HandleLiveRequest).Methods(http.MethodGet)
 	r.HandleFunc("/ready", healthController.HandleReadyRequest).Methods(http.MethodGet)
@@ -151,9 +169,6 @@ func main() {
 
 	knownPathPrefixes := []string{
 		"/api/",
-		"/ruleset/",     //TODO: remove
-		"/rulesetjs/",   //TODO: remove
-		"/rulesetjson/", //TODO: remove
 		"/live/",
 		"/ready/",
 	}

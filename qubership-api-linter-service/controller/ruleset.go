@@ -15,51 +15,40 @@
 package controller
 
 import (
+	"github.com/Netcracker/qubership-api-linter-service/exception"
+	"github.com/Netcracker/qubership-api-linter-service/service"
 	"net/http"
-	"os"
 )
 
 type RulesetController interface {
-	GetRulesetFile(w http.ResponseWriter, r *http.Request)
-	GetJSRulesetFile(w http.ResponseWriter, r *http.Request)
-	GetJsonRulesetFile(w http.ResponseWriter, r *http.Request)
+	GetRuleset(w http.ResponseWriter, r *http.Request)
 }
 
-type rulesetControllerImpl struct{}
-
-func NewRulesetController() RulesetController {
-	return &rulesetControllerImpl{}
+type rulesetControllerImpl struct {
+	rulesetService service.RulesetService
 }
 
-func (c *rulesetControllerImpl) GetRulesetFile(w http.ResponseWriter, r *http.Request) {
-	rules, err := os.ReadFile("./resources/spectral/rules/rules.yaml")
+func NewRulesetController(rulesetService service.RulesetService) RulesetController {
+	return &rulesetControllerImpl{rulesetService: rulesetService}
+}
+
+func (c rulesetControllerImpl) GetRuleset(w http.ResponseWriter, r *http.Request) {
+	rulesetId := getStringParam(r, "ruleset_id")
+	// FIXME: authorization check!
+	result, err := c.rulesetService.GetRuleset(rulesetId)
 	if err != nil {
-		respondWithError(w, "failed to read ruleset", err)
+		respondWithError(w, "Failed to get ruleset", err)
 		return
 	}
-	w.Header().Add("Content-Type", "application/yaml; charset=utf-8")
-	w.Header().Add("Content-Disposition", "attachment; filename=rules.yaml")
-	w.Write(rules)
-}
-
-func (c *rulesetControllerImpl) GetJSRulesetFile(w http.ResponseWriter, r *http.Request) {
-	rules, err := os.ReadFile("./resources/spectral/rules/rules.js")
-	if err != nil {
-		respondWithError(w, "failed to read ruleset", err)
-		return
+	if result == nil {
+		//TODO: how to handle?
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusNotFound,
+			Code:    "1234",           // TODO
+			Message: "lint not found", // TODO
+			Params:  nil,
+			Debug:   "",
+		})
 	}
-	w.Header().Add("Content-Type", "text/javascript; charset=utf-8")
-	w.Header().Add("Content-Disposition", "attachment; filename=rules.js")
-	w.Write(rules)
-}
-
-func (c *rulesetControllerImpl) GetJsonRulesetFile(w http.ResponseWriter, r *http.Request) {
-	rules, err := os.ReadFile("./resources/spectral/rules/rules.json")
-	if err != nil {
-		respondWithError(w, "failed to read ruleset", err)
-		return
-	}
-	w.Header().Add("Content-Type", "application/json; charset=utf-8")
-	w.Header().Add("Content-Disposition", "attachment; filename=rules.json")
-	w.Write(rules)
+	respondWithJson(w, http.StatusOK, result)
 }

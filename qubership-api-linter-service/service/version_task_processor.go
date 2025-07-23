@@ -18,10 +18,11 @@ type VersionTaskProcessor interface {
 	StartVersionLintTask(taskId string) error
 }
 
-func NewVersionTaskProcessor(verRepo repository.VersionLintTaskRepository, docRepo repository.DocLintTaskRepository, cl client.ApihubClient, linterSelectorService LinterSelectorService, executorId string) VersionTaskProcessor {
+func NewVersionTaskProcessor(verRepo repository.VersionLintTaskRepository, docRepo repository.DocLintTaskRepository, verResRepo repository.VersionResultRepository, cl client.ApihubClient, linterSelectorService LinterSelectorService, executorId string) VersionTaskProcessor {
 	svc := &versionTaskProcessorImpl{
 		verRepo:               verRepo,
 		docRepo:               docRepo,
+		verResRepo:            verResRepo,
 		cl:                    cl,
 		linterSelectorService: linterSelectorService,
 		executorId:            executorId,
@@ -41,6 +42,7 @@ func NewVersionTaskProcessor(verRepo repository.VersionLintTaskRepository, docRe
 type versionTaskProcessorImpl struct {
 	verRepo               repository.VersionLintTaskRepository
 	docRepo               repository.DocLintTaskRepository
+	verResRepo            repository.VersionResultRepository
 	cl                    client.ApihubClient
 	linterSelectorService LinterSelectorService
 	executorId            string
@@ -68,12 +70,6 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 		return
 	}
 
-	err = v.verRepo.UpdateStatusAndDetails(ctx, taskId, view.StatusProcessing, "")
-	if err != nil {
-		log.Errorf("Failed to update task %s status to %s: %v", taskId, view.StatusProcessing, err)
-		return
-	}
-
 	// TODO: update last_active for version task periodically in goroutine!!!!!!!!!
 
 	version := fmt.Sprintf("%s@%d", task.Version, task.Revision)
@@ -82,11 +78,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 
 	docs, err := v.cl.GetVersionDocuments(secC, task.PackageId, version)
 	if err != nil {
-		err = v.verRepo.UpdateStatusAndDetails(ctx, taskId, view.StatusError, fmt.Sprintf("Failed to get version documents: %s", err))
-		if err != nil {
-			log.Errorf("Failed to update task %s status to %s: %v", taskId, view.StatusError, err)
-			return
-		}
+		v.handleProcessingFailed(ctx, *task, fmt.Errorf("failed to get version documents: %s", err))
 		return
 	}
 
@@ -115,18 +107,18 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	for _, doc := range docs.Documents {
 		lr := typeToLinter[doc.Type]
 
-		status := view.StatusNotStarted
+		status := view.TaskStatusNotStarted
 		details := ""
 		executorId := ""
 
 		if lr.err != nil {
-			status = view.StatusError
+			status = view.TaskStatusError
 			details = lr.err.Error()
 			executorId = v.executorId
 		}
 
 		if lr.rulesetId == "" {
-			status = view.StatusError
+			status = view.TaskStatusError
 			details = fmt.Sprintf("No suitable ruleset was found. Linter=%s", lr.linter)
 			executorId = v.executorId
 		}
@@ -157,11 +149,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 
 	err = v.docRepo.SaveDocTasksAndUpdVer(ctx, docTasks, taskId)
 	if err != nil {
-		err = v.verRepo.UpdateStatusAndDetails(ctx, taskId, view.StatusError, fmt.Sprintf("Failed to save doc tasks: %s", err))
-		if err != nil {
-			log.Errorf("Failed to update task %s status to %s: %v", taskId, view.StatusError, err)
-			return
-		}
+		v.handleProcessingFailed(ctx, *task, fmt.Errorf("failed to save doc tasks: %s", err))
 		return
 	}
 
@@ -187,8 +175,6 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 	t := time.NewTicker(time.Second * 5)
 	ctx := context.Background()
 	for range t.C {
-		log.Infof("checkDocReady running") // TODO: remove
-
 		verLintTasks, err := v.verRepo.GetWaitingForDocTasks(ctx, v.executorId)
 		if err != nil {
 			log.Errorf("Failed to get version tasks in waiting for docs status: %s", err)
@@ -206,9 +192,10 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 		docLintTasks, err := v.docRepo.GetDocTasksForVersionTasks(ctx, verTaskIds)
 		if err != nil {
 			log.Errorf("Failed to get doc lint tasks for readiness check: %s", err)
+			continue
 		}
-		// don't expect many entries, so just iterating
 
+		// don't expect many entries, so just iterating
 		for _, verLintTask := range verLintTasks {
 			var numSucceed int
 			var numFailed int
@@ -218,13 +205,13 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 					continue
 				}
 				switch docLintTask.Status {
-				case view.StatusComplete:
+				case view.TaskStatusComplete:
 					numSucceed++
 					break
-				case view.StatusError:
+				case view.TaskStatusError:
 					numFailed++
 					break
-				case view.StatusNotStarted, view.StatusLinting, view.StatusProcessing:
+				case view.TaskStatusNotStarted, view.TaskStatusLinting, view.TaskStatusProcessing:
 					numNotReady++
 					break
 				default:
@@ -234,31 +221,56 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 			}
 			if numNotReady > 0 {
 				// version task is not ready yet
-				err = v.verRepo.UpdateStatusAndDetails(ctx, verLintTask.Id, view.StatusWaitingForDocs, "")
+				err = v.verRepo.UpdateLastActive(ctx, verLintTask.Id, v.executorId)
 				if err != nil {
-					log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.StatusWaitingForDocs, err)
+					log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.TaskStatusWaitingForDocs, err)
 					continue
 				}
 			} else {
 				// version task is ready
+				lintedVerEnt, err := v.verResRepo.GetLintedVersion(ctx, verLintTask.PackageId, verLintTask.Version, verLintTask.Revision)
+				if err != nil {
+					v.handleProcessingFailed(ctx, verLintTask, err)
+					continue
+				}
+
 				if numFailed > 0 {
-					log.Infof("Version lint task %s is failed because of failed doc tasks", verLintTask.Id)
-					err = v.verRepo.UpdateStatusAndDetails(ctx, verLintTask.Id, view.StatusError, fmt.Sprintf("%d doc lint task(s) failed", numFailed))
-					if err != nil {
-						log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.StatusError, err)
-						continue
-					}
+					log.Infof("Version lint (task = %s) is failed because of failed doc tasks", verLintTask.Id)
+					lintedVerEnt.LintStatus = view.VersionStatusFailed
+					lintedVerEnt.LintDetails = fmt.Sprintf("%d doc task(s) failed", numFailed)
 				} else {
-					log.Infof("Version lint task %s successfully completed", verLintTask.Id)
-					err = v.verRepo.UpdateStatusAndDetails(ctx, verLintTask.Id, view.StatusComplete, "")
-					if err != nil {
-						log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.StatusComplete, err)
-						continue
-					}
+					log.Infof("Version lint (task = %s) successfully completed", verLintTask.Id)
+					lintedVerEnt.LintStatus = view.VersionStatusSuccess
+					lintedVerEnt.LintDetails = ""
+				}
+				lintedVerEnt.LintedAt = time.Now()
+
+				err = v.verRepo.VersionLintCompleted(ctx, verLintTask.Id, lintedVerEnt)
+				if err != nil {
+					v.handleProcessingFailed(ctx, verLintTask, err)
+					continue
 				}
 			}
 		}
 
 	}
 
+}
+
+func (v versionTaskProcessorImpl) handleProcessingFailed(ctx context.Context, verLintTask entity.VersionLintTask, taskErr error) {
+	if verLintTask.RestartCount >= 2 {
+		log.Error("Failed to process version task %s with status = %s: %s. No more retries.", verLintTask.Id, verLintTask.Status, taskErr)
+		updErr := v.verRepo.VersionLintFailed(ctx, verLintTask.Id, fmt.Sprintf("failed to save version lint finished status: %s", taskErr))
+		if updErr != nil {
+			log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.TaskStatusError, updErr)
+			return
+		}
+	} else {
+		log.Errorf("Failed to process version task %s with status = %s: %s. Going to retry.", verLintTask.Id, verLintTask.Status, taskErr)
+		updErr := v.verRepo.IncRestartCount(ctx, verLintTask.Id)
+		if updErr != nil {
+			log.Errorf("Failed to increment version lint task %s restart count : %v", verLintTask.Id, updErr)
+		}
+		return
+	}
 }

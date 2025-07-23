@@ -17,19 +17,61 @@ import (
 type VersionLintTaskRepository interface {
 	SaveVersionTask(ctx context.Context, ent entity.VersionLintTask) error
 	GetTaskById(ctx context.Context, taskId string) (*entity.VersionLintTask, error)
-	UpdateStatusAndDetails(ctx context.Context, taskId string, status view.TaskStatus, details string) error
+	GetRunningTaskForVersion(ctx context.Context, packageId, version string, revision int) ([]entity.VersionLintTask, error)
+	//UpdateStatusAndDetails(ctx context.Context, taskId string, status view.TaskStatus, details string) error
+	IncRestartCount(ctx context.Context, taskId string) error
 	FindFreeVersionTask(ctx context.Context, executorId string) (*entity.VersionLintTask, error)
 	GetWaitingForDocTasks(ctx context.Context, executorId string) ([]entity.VersionLintTask, error)
+	VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion) error
+	VersionLintFailed(ctx context.Context, taskId string, details string) error
+	UpdateLastActive(ctx context.Context, taskId string, executorId string) error
 }
 
 type versionLintTaskRepositoryImpl struct {
 	cp db.ConnectionProvider
 }
 
+func (r *versionLintTaskRepositoryImpl) UpdateLastActive(ctx context.Context, taskId string, executorId string) error {
+	var ent entity.VersionLintTask
+	_, err := r.cp.GetConnection().ModelContext(ctx, &ent).
+		Set("last_active = ?", time.Now()).
+		Where("id = ?", taskId).
+		Where("executor_id = ?", executorId).
+		Update()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func NewVersionLintTaskRepository(cp db.ConnectionProvider) VersionLintTaskRepository {
+	return &versionLintTaskRepositoryImpl{cp: cp}
+}
+
+func (r *versionLintTaskRepositoryImpl) IncRestartCount(ctx context.Context, taskId string) error {
+	return r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
+		var task entity.VersionLintTask
+		err := tx.Model(&task).
+			Where("id = ?", taskId).
+			Select()
+		if err != nil {
+			return err
+		}
+
+		task.RestartCount += 1
+
+		_, err = tx.Model(&task).WherePK().Update()
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func (r *versionLintTaskRepositoryImpl) GetWaitingForDocTasks(ctx context.Context, executorId string) ([]entity.VersionLintTask, error) {
 	var result []entity.VersionLintTask
 	err := r.cp.GetConnection().ModelContext(ctx, &result).
-		Where("status = ?", view.StatusWaitingForDocs).
+		Where("status = ?", view.TaskStatusWaitingForDocs).
 		Where("executor_id = ?", executorId).
 		Select()
 	if err != nil {
@@ -39,10 +81,6 @@ func (r *versionLintTaskRepositoryImpl) GetWaitingForDocTasks(ctx context.Contex
 		return nil, err
 	}
 	return result, nil
-}
-
-func NewVersionLintTaskRepository(cp db.ConnectionProvider) VersionLintTaskRepository {
-	return &versionLintTaskRepositoryImpl{cp: cp}
 }
 
 func (r *versionLintTaskRepositoryImpl) SaveVersionTask(ctx context.Context, ent entity.VersionLintTask) error {
@@ -64,7 +102,7 @@ func (r *versionLintTaskRepositoryImpl) SaveVersionTask(ctx context.Context, ent
 	return nil
 }
 
-func (r *versionLintTaskRepositoryImpl) UpdateStatusAndDetails(ctx context.Context, taskId string, status view.TaskStatus, details string) error {
+/*func (r *versionLintTaskRepositoryImpl) UpdateStatusAndDetails(ctx context.Context, taskId string, status view.TaskStatus, details string) error {
 	var ent entity.VersionLintTask
 	_, err := r.cp.GetConnection().ModelContext(ctx, &ent).
 		Set("status = ?", status).
@@ -72,7 +110,71 @@ func (r *versionLintTaskRepositoryImpl) UpdateStatusAndDetails(ctx context.Conte
 		Set("last_active = ?", time.Now()).
 		Where("id = ?", taskId).
 		Update()
+
+	// FIXME: update linted version is exists!!!
+
 	return err
+}*/
+
+func (r *versionLintTaskRepositoryImpl) VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion) error {
+	return r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
+		var taskEnt entity.VersionLintTask
+		_, err := tx.Model(&taskEnt).
+			Set("status = ?", view.TaskStatusComplete).
+			Set("last_active = ?", time.Now()).
+			Where("id = ?", taskId).
+			Update()
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.Model(ver).WherePK().Update()
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+}
+
+func (r *versionLintTaskRepositoryImpl) VersionLintFailed(ctx context.Context, taskId string, details string) error {
+	return r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
+		var taskEnt entity.VersionLintTask
+		_, err := tx.Model(&taskEnt).
+			Set("status = ?", view.StatusFailure).
+			Set("details = ?", details).
+			Set("last_active = ?", time.Now()).
+			Where("id = ?", taskId).
+			Update()
+		if err != nil {
+			return err
+		}
+
+		lintedVersionExists := true
+		var ver entity.LintedVersion
+		err = tx.Model(&ver).
+			Where("package_id = ?", taskEnt.PackageId).
+			Where("version = ?", taskEnt.Version).
+			Where("revision = ?", taskEnt.Revision).
+			Select()
+		if err != nil {
+			if errors.Is(err, pg.ErrNoRows) {
+				lintedVersionExists = false
+			}
+			return err
+		}
+		if lintedVersionExists {
+			ver.LintStatus = view.VersionStatusFailed
+			ver.LintDetails = details
+			_, err = tx.Model(&ver).WherePK().Update()
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 func (r *versionLintTaskRepositoryImpl) GetTaskById(ctx context.Context, taskId string) (*entity.VersionLintTask, error) {
@@ -81,9 +183,31 @@ func (r *versionLintTaskRepositoryImpl) GetTaskById(ctx context.Context, taskId 
 		Where("id = ?", taskId).
 		Select()
 	if err != nil {
+		if errors.Is(err, pg.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &task, nil
+}
+
+func (r *versionLintTaskRepositoryImpl) GetRunningTaskForVersion(ctx context.Context, packageId, version string, revision int) ([]entity.VersionLintTask, error) {
+	var tasks []entity.VersionLintTask
+	err := r.cp.GetConnection().ModelContext(ctx, &tasks).
+		Where("package_id = ?", packageId).
+		Where("version = ?", version).
+		Where("revision = ?", revision).
+		WhereOr("status = ?", view.TaskStatusNotStarted).
+		WhereOr("status = ?", view.TaskStatusProcessing).
+		WhereOr("status = ?", view.TaskStatusWaitingForDocs).
+		Select()
+	if err != nil {
+		if errors.Is(err, pg.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return tasks, nil
 }
 
 /*func (r *versionLintTaskRepositoryImpl) FindFreeVersionTask(ctx context.Context, executorId string) (*entity.VersionLintTask, error) {
@@ -122,7 +246,7 @@ func (r *versionLintTaskRepositoryImpl) GetTaskById(ctx context.Context, taskId 
 
 var queryVersionTask = fmt.Sprintf("select * from version_lint_task b where "+
 	"(b.status='%s' or ((b.status='%s' or b.status='%s') and b.last_active < (now() - interval '%d seconds'))) "+
-	"order by b.created_at ASC limit 1 for no key update skip locked", view.StatusNotStarted, view.StatusProcessing, view.StatusWaitingForDocs, buildKeepaliveTimeoutSec)
+	"order by b.created_at ASC limit 1 for no key update skip locked", view.TaskStatusNotStarted, view.TaskStatusProcessing, view.TaskStatusWaitingForDocs, buildKeepaliveTimeoutSec)
 
 func (r *versionLintTaskRepositoryImpl) FindFreeVersionTask(ctx context.Context, executorId string) (*entity.VersionLintTask, error) {
 	var result *entity.VersionLintTask
@@ -136,7 +260,7 @@ func (r *versionLintTaskRepositoryImpl) FindFreeVersionTask(ctx context.Context,
 
 			_, err := tx.Query(&ents, queryVersionTask)
 			if err != nil {
-				if err == pg.ErrNoRows {
+				if errors.Is(err, pg.ErrNoRows) {
 					return nil
 				}
 				return fmt.Errorf("failed to find free build: %w", err)
@@ -144,11 +268,12 @@ func (r *versionLintTaskRepositoryImpl) FindFreeVersionTask(ctx context.Context,
 			if len(ents) > 0 {
 				result = &ents[0]
 
-				if result.Status == view.StatusWaitingForDocs {
+				if result.Status == view.TaskStatusWaitingForDocs {
 					// just update executor id
 					_, err = tx.Model(result).
 						Set("executor_id = ?", executorId).
 						Set("last_active = ?", time.Now()).
+						Set("status = ?", view.TaskStatusProcessing).
 						Where("id = ?", result.Id).
 						Update()
 					if err != nil {
@@ -162,7 +287,7 @@ func (r *versionLintTaskRepositoryImpl) FindFreeVersionTask(ctx context.Context,
 				if result.RestartCount >= 2 {
 					query := tx.Model(result).
 						Where("id = ?", result.Id).
-						Set("status = ?", view.StatusError).
+						Set("status = ?", view.TaskStatusError).
 						Set("details = ?", fmt.Sprintf("Restart count exceeded limit. Details: %v", result.Details)).
 						Set("last_active = now()")
 					_, err := query.Update()
@@ -175,13 +300,13 @@ func (r *versionLintTaskRepositoryImpl) FindFreeVersionTask(ctx context.Context,
 				}
 
 				// take free task
-				isFirstRun := result.Status == view.StatusNotStarted
+				isFirstRun := result.Status == view.TaskStatusNotStarted
 
 				if !isFirstRun {
 					result.RestartCount += 1
 				}
 
-				result.Status = view.StatusProcessing
+				result.Status = view.TaskStatusProcessing
 				result.ExecutorId = executorId
 
 				_, err = tx.Model(result).

@@ -51,10 +51,6 @@ func (s *spectralExecutorImpl) LintLocalDoc(docPath string, rulesetPath string) 
 	args = append(args, resultPath)
 
 	cmd := exec.Command(s.spectralBinPath, args...)
-	// TODO: ??????
-	/*inBuffer := bytes.Buffer{}
-	inBuffer.Write(validationData)
-	cmd.Stdin = &inBuffer*/
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
@@ -62,10 +58,10 @@ func (s *spectralExecutorImpl) LintLocalDoc(docPath string, rulesetPath string) 
 
 	start := time.Now()
 	err := cmd.Run()
-	calculationTime := time.Since(start) /*Error running Spectral!
-	Use --verbose flag to print the error stack.
-	Error #1: Unexpected token (Note that you need plugins to import files that are not JavaScript)
-	*/
+
+	// TODO: read out && stderr ???
+
+	calculationTime := time.Since(start)
 	if err != nil {
 		//spectral process exits with status 1 if validation contains at least one error...
 		if err.Error() != "exit status 1" {

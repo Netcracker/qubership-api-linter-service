@@ -28,3 +28,9 @@ const (
 	StatusSuccess LintedDocumentStatus = "success"
 	StatusFailure LintedDocumentStatus = "fail"
 )
+
+type ValidatedDocument struct {
+	Slug    string  `json:"slug"`
+	ApiType ApiType `json:"specificationType"`
+	DocName string  `json:"documentName"`
+}

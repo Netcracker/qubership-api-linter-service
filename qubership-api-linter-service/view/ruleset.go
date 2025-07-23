@@ -1,0 +1,31 @@
+package view
+
+import "time"
+
+type RulesetMetadata struct {
+	Id       string        `json:"id"`
+	Name     string        `json:"name"`
+	Status   RulesetStatus `json:"status"`
+	FileName string        `json:"fileName"`
+}
+
+type Ruleset struct {
+	Id                string             `json:"id"`
+	Name              string             `json:"name"`
+	Status            RulesetStatus      `json:"status"`
+	ActivationHistory []ActivationRecord `json:"activationHistory"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	CanBeDeleted      bool               `json:"canBeDeleted"`
+}
+
+type RulesetStatus string
+
+const (
+	RulesetStatusActive   RulesetStatus = "active"
+	RulesetStatusInactive RulesetStatus = "inactive"
+)
+
+type ActivationRecord struct {
+	ActiveFrom time.Time `json:"activeFrom"`
+	ActiveTo   time.Time `json:"activeTo"`
+}

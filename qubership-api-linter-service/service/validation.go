@@ -16,34 +16,332 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
-	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
+	"github.com/Netcracker/qubership-api-linter-service/utils"
+	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
-	"net/http"
 	"time"
 )
 
 type ValidationService interface {
 	ValidateVersion(packageId string, version string, revision int, eventId string) (string, error)
-
-	// TODO: get status, result, etc
-	ValidateFiles(engine string, files []string) (interface{}, error) // TODO: remove
+	GetVersionSummary(ctx context.Context, packageId string, version string) ([]view.ValidationSummaryForApiType, error)
+	GetValidatedDocuments(ctx context.Context, packageId string, version string) ([]view.ValidatedDocument, error)
+	GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error)
 }
 
-func NewValidationService(repo repository.VersionLintTaskRepository, versionTaskProcessor VersionTaskProcessor, executorId string) ValidationService {
+func NewValidationService(
+	verTaskRepo repository.VersionLintTaskRepository,
+	versionResultRepository repository.VersionResultRepository,
+	lintResultRepository repository.LintResultRepository,
+	rulesetRepository repository.RulesetRepository,
+	versionTaskProcessor VersionTaskProcessor,
+	apihubClient client.ApihubClient,
+	executorId string) ValidationService {
 	return &validationServiceImpl{
-		repo:                 repo,
-		versionTaskProcessor: versionTaskProcessor,
-		executorId:           executorId,
+		verTaskRepo:             verTaskRepo,
+		versionResultRepository: versionResultRepository,
+		lintResultRepository:    lintResultRepository,
+		rulesetRepository:       rulesetRepository,
+		versionTaskProcessor:    versionTaskProcessor,
+		apihubClient:            apihubClient,
+		executorId:              executorId,
 	}
 }
 
 type validationServiceImpl struct {
-	repo                 repository.VersionLintTaskRepository
+	verTaskRepo             repository.VersionLintTaskRepository
+	versionResultRepository repository.VersionResultRepository
+	lintResultRepository    repository.LintResultRepository
+	rulesetRepository       repository.RulesetRepository
+	docLintTaskRepository   repository.DocLintTaskRepository // TODO
+
 	versionTaskProcessor VersionTaskProcessor
+	apihubClient         client.ApihubClient
 	executorId           string
+}
+
+func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) ([]view.ValidationSummaryForApiType, error) {
+	// TODO: Summary for each API type
+
+	sc := secctx.CreateSystemContext() // FIXME: use user context
+
+	ver, rev, err := v.getVersionAndRevision(sc, packageId, version)
+	if err != nil {
+		return nil, err
+	}
+
+	lintedVer, lintedDocs, err := v.versionResultRepository.GetVersionAndDocsSummary(ctx, packageId, ver, rev)
+	if err != nil {
+		return nil, err
+	}
+	if lintedVer == nil {
+		varTasks, err := v.verTaskRepo.GetRunningTaskForVersion(ctx, packageId, ver, rev)
+		if err != nil {
+			return nil, err
+		}
+		if len(varTasks) == 0 {
+			return nil, nil
+		}
+		verTask := varTasks[0]
+
+		docTasks, err := v.docLintTaskRepository.GetDocTasksForVersionTasks(ctx, []string{verTask.Id})
+		if err != nil {
+			return nil, err
+		}
+
+		// FIXME: reimplement and make generic!!!!
+		rulesetMap := make(map[string]entity.Ruleset)
+		for _, doc := range docTasks {
+			_, exists := rulesetMap[doc.RulesetId]
+			if !exists {
+				ruleset, err := v.rulesetRepository.GetRulesetById(doc.RulesetId)
+				if err != nil {
+					return nil, err
+				}
+				if ruleset == nil {
+					return nil, fmt.Errorf("ruleset with id %s not found", doc.RulesetId)
+				}
+				rulesetMap[doc.RulesetId] = *ruleset
+			}
+		}
+		resultMap := make(map[view.ApiType]view.ValidationSummaryForApiType)
+		for _, doc := range docTasks {
+			ruleset, ok := rulesetMap[doc.RulesetId]
+			if !ok {
+				return nil, fmt.Errorf("ruleset with id %s is not found in cache map", doc.RulesetId)
+			}
+
+			resultMap[doc.APIType] = view.ValidationSummaryForApiType{
+				ApiType: doc.APIType,
+				Status:  "inProgress", // TODO: fix
+				Ruleset: &view.RulesetMetadata{
+					Id:       ruleset.Id,
+					Name:     ruleset.Name,
+					Status:   ruleset.Status,
+					FileName: ruleset.FileName,
+				},
+				IssuesSummary:   nil,
+				FailedDocuments: nil,
+			}
+		}
+
+		var result []view.ValidationSummaryForApiType
+		for _, val := range resultMap {
+			result = append(result, val)
+		}
+		return result, nil
+	}
+
+	rulesetMap := make(map[string]entity.Ruleset)
+	resultMap := make(map[view.ApiType]view.ValidationSummaryForApiType)
+
+	for _, doc := range lintedDocs {
+		_, exists := rulesetMap[doc.RulesetId]
+		if !exists {
+			ruleset, err := v.rulesetRepository.GetRulesetById(doc.RulesetId)
+			if err != nil {
+				return nil, err
+			}
+			if ruleset == nil {
+				return nil, fmt.Errorf("ruleset with id %s not found", doc.RulesetId)
+			}
+			rulesetMap[doc.RulesetId] = *ruleset
+		}
+	}
+
+	for _, doc := range lintedDocs {
+		resultSummary, err := v.lintResultRepository.GetLintResultSummary(ctx, doc.DataHash, doc.RulesetId)
+		if err != nil {
+			return nil, err
+		}
+		if resultSummary == nil {
+			continue
+		}
+
+		ruleset, ok := rulesetMap[doc.RulesetId]
+		if !ok {
+			return nil, fmt.Errorf("ruleset with id %s is not found in cache map", doc.RulesetId)
+		}
+
+		var summ *view.IssuesSummary
+
+		switch ruleset.Linter {
+		case view.SpectralLinter:
+			// calculate spectral summary
+			summ, err = makeSpectralSummary(resultSummary.Summary)
+			if err != nil {
+				return nil, err
+			}
+			if summ == nil {
+				return nil, fmt.Errorf("failed to calculate spectral result summary")
+			}
+		case view.UnknownLinter:
+			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
+		default:
+			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
+		}
+
+		value, exists := resultMap[doc.SpecificationType]
+		if !exists {
+			/*ruleset, err := v.rulesetRepository.GetRulesetById(doc.RulesetId)
+			if err != nil {
+				return nil, err
+			}
+			if ruleset == nil {
+				return nil, fmt.Errorf("ruleset with id %s not found", doc.RulesetId)
+			}*/
+			resultMap[doc.SpecificationType] = view.ValidationSummaryForApiType{
+				ApiType: doc.SpecificationType,
+				Status:  lintedVer.LintStatus, // TODO: extract for the whole version ?
+				Ruleset: &view.RulesetMetadata{
+					Id:       ruleset.Id,
+					Name:     ruleset.Name,
+					Status:   ruleset.Status,
+					FileName: ruleset.FileName,
+				},
+				IssuesSummary:   summ,
+				FailedDocuments: nil,
+			}
+		} else {
+			// TODO: check/update value.Status
+			value.IssuesSummary.Append(*summ)
+			resultMap[doc.SpecificationType] = value
+		}
+	}
+
+	var result []view.ValidationSummaryForApiType
+	for _, val := range resultMap {
+		result = append(result, val)
+	}
+	return result, nil
+}
+
+func (v validationServiceImpl) GetValidatedDocuments(ctx context.Context, packageId string, version string) ([]view.ValidatedDocument, error) {
+	var result []view.ValidatedDocument
+
+	sc := secctx.CreateSystemContext() // FIXME: use user context
+
+	ver, rev, err := v.getVersionAndRevision(sc, packageId, version)
+	if err != nil {
+		return nil, err
+	}
+
+	docs, err := v.versionResultRepository.GetLintedDocuments(ctx, packageId, ver, rev)
+	if err != nil {
+		return nil, err
+	}
+	for _, doc := range docs {
+		result = append(result, entity.MakeValidatedDocumentView(doc))
+	}
+	return result, nil
+}
+
+func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
+
+	sc := secctx.CreateSystemContext() // FIXME: use user context
+	ver, rev, err := v.getVersionAndRevision(sc, packageId, version)
+	if err != nil {
+		return nil, err
+	}
+
+	lintedDocument, err := v.versionResultRepository.GetLintedDocument(ctx, packageId, ver, rev, slug)
+	if err != nil {
+		return nil, err
+	}
+	if lintedDocument == nil {
+		return nil, nil
+	}
+
+	lintResult, err := v.lintResultRepository.GetLintResult(ctx, lintedDocument.DataHash, lintedDocument.RulesetId)
+	if err != nil {
+		return nil, err
+	}
+	if lintResult == nil {
+		return nil, nil
+	}
+
+	var issues []view.ValidationIssue
+	var spectralOutput []view.SpectralOutputItem
+	err = json.Unmarshal(lintResult.Data, &spectralOutput)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range spectralOutput {
+		issues = append(issues, view.ValidationIssue{
+			Path:     item.Path,
+			Severity: view.ConvertSpectralSeverityToString(item.Severity),
+			Message:  item.Message,
+		})
+	}
+
+	ruleset, err := v.rulesetRepository.GetRulesetById(lintedDocument.RulesetId)
+	if err != nil {
+		return nil, err
+	}
+	if ruleset == nil {
+		return nil, fmt.Errorf("ruleset with id %s not found", lintedDocument.RulesetId)
+	}
+
+	result := view.DocumentResult{
+		Ruleset:           entity.MakeRulesetView(*ruleset),
+		Issues:            issues,
+		ValidatedDocument: entity.MakeValidatedDocumentView(*lintedDocument),
+	}
+
+	return &result, nil
+}
+
+func makeSpectralSummary(summary map[string]interface{}) (*view.IssuesSummary, error) {
+	result := view.IssuesSummary{}
+	errCStr, ok := summary["errorCount"] // summary could be empty
+	if ok {
+		if errC, ok := errCStr.(float64); ok {
+			result.Error = int(errC)
+		}
+	}
+	warningCStr, ok := summary["warningCount"]
+	if ok {
+		if warningC, ok := warningCStr.(float64); ok {
+			result.Warning = int(warningC)
+		}
+	}
+
+	infoCStr, ok := summary["infoCount"]
+	if ok {
+		if infoC, ok := infoCStr.(float64); ok {
+			result.Info = int(infoC)
+		}
+	}
+
+	return &result, nil
+}
+
+func (v validationServiceImpl) getVersionAndRevision(securityContext secctx.SecurityContext, packageId string, version string) (string, int, error) {
+	ver, rev, err := utils.SplitVersionRevision(version)
+	if err != nil {
+		return "", 0, err
+	}
+
+	if rev == 0 {
+		versionView, err := v.apihubClient.GetVersion(securityContext, packageId, version)
+		if err != nil {
+			return "", 0, err
+		}
+		ver, rev, err = utils.SplitVersionRevision(versionView.Version)
+		if err != nil {
+			return "", 0, err
+		}
+		if rev == 0 {
+			return "", 0, fmt.Errorf("unable to identify latest revision for version %s", version)
+		}
+	}
+	return ver, rev, nil
 }
 
 func (v validationServiceImpl) ValidateVersion(packageId string, version string, revision int, eventId string) (string, error) {
@@ -61,7 +359,7 @@ func (v validationServiceImpl) ValidateVersion(packageId string, version string,
 		RestartCount: 0,
 		Priority:     0,
 	}
-	err := v.repo.SaveVersionTask(context.Background(), ent)
+	err := v.verTaskRepo.SaveVersionTask(context.Background(), ent)
 	if err != nil {
 		return "", err
 	}
@@ -75,21 +373,3 @@ func (v validationServiceImpl) ValidateVersion(packageId string, version string,
 }
 
 const tempFolder = "tmp"
-
-// TODO: remove
-func (v validationServiceImpl) ValidateFiles(engine string, files []string) (interface{}, error) {
-	var err error
-	var report interface{}
-	switch engine {
-	case "vacuum":
-		report, err = v.runDocumentsVacuum(files)
-	case "spectral":
-		report, err = v.runDocumentsSpectral(files)
-	default:
-		err = &exception.CustomError{
-			Status:  http.StatusBadRequest,
-			Message: fmt.Sprintf("Value %s is incorrect validation engine. Available options are: vacuum, spectral.", engine),
-		}
-	}
-	return report, err
-}

@@ -50,15 +50,15 @@ func (d docLintTaskRepositoryImpl) SaveDocTasksAndUpdVer(ctx context.Context, en
 
 		allFailed := true
 		for _, ent := range ents {
-			if ent.Status != view.StatusError {
+			if ent.Status != view.TaskStatusError {
 				allFailed = false
 				break
 			}
 		}
 
-		verStatus := view.StatusWaitingForDocs
+		verStatus := view.TaskStatusWaitingForDocs
 		if allFailed {
-			verStatus = view.StatusError
+			verStatus = view.TaskStatusError
 		}
 
 		var verEnt entity.VersionLintTask
@@ -74,17 +74,11 @@ func (d docLintTaskRepositoryImpl) SaveDocTasksAndUpdVer(ctx context.Context, en
 	return err
 }
 
-/*var queryItemToBuild = fmt.Sprintf("select * from build b where "+
-"(b.status='none' or (b.status='%s' and b.last_active < (now() - interval '%d seconds'))) and "+
-"(b.build_id not in (select distinct build_id from build_depends where depend_id in (select build.build_id from build where status='%s' or status='%s'))) "+
-"order by b.priority DESC, b.created_at ASC limit 1 for no key update skip locked", view.StatusRunning, buildKeepaliveTimeoutSec, view.StatusNotStarted, view.StatusRunning)
-*/
-
 const buildKeepaliveTimeoutSec = 30
 
 var queryItemToBuild = fmt.Sprintf("select * from document_lint_task b where "+
 	"(b.status='%s' or (b.status='%s' and b.last_active < (now() - interval '%d seconds'))) "+
-	"order by b.created_at ASC limit 1 for no key update skip locked", view.StatusNotStarted, view.StatusProcessing, buildKeepaliveTimeoutSec)
+	"order by b.created_at ASC limit 1 for no key update skip locked", view.TaskStatusNotStarted, view.TaskStatusProcessing, buildKeepaliveTimeoutSec)
 
 func (d docLintTaskRepositoryImpl) FindFreeDocTask(ctx context.Context, executorId string) (*entity.DocumentLintTask, error) {
 	var result *entity.DocumentLintTask
@@ -109,7 +103,7 @@ func (d docLintTaskRepositoryImpl) FindFreeDocTask(ctx context.Context, executor
 				if result.RestartCount >= 2 {
 					query := tx.Model(result).
 						Where("id = ?", result.Id).
-						Set("status = ?", view.StatusError).
+						Set("status = ?", view.TaskStatusError).
 						Set("details = ?", fmt.Sprintf("Restart count exceeded limit. Details: %v", result.Details)).
 						Set("last_active = now()")
 					_, err := query.Update()
@@ -121,13 +115,13 @@ func (d docLintTaskRepositoryImpl) FindFreeDocTask(ctx context.Context, executor
 				}
 
 				// take free task
-				isFirstRun := result.Status == view.StatusNotStarted
+				isFirstRun := result.Status == view.TaskStatusNotStarted
 
 				if !isFirstRun {
 					result.RestartCount += 1
 				}
 
-				result.Status = view.StatusProcessing
+				result.Status = view.TaskStatusProcessing
 				result.ExecutorId = executorId
 				// TODO: add optimistic lock as well?
 

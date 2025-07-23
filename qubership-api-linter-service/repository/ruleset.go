@@ -8,7 +8,7 @@ import (
 	"github.com/go-pg/pg/v10"
 )
 
-type RuleSetRepository interface {
+type RulesetRepository interface {
 	//list rulesets
 
 	GetActiveRulesets(apiType view.ApiType) (map[view.Linter]entity.Ruleset, error)
@@ -24,12 +24,15 @@ func (r ruleSetRepositoryImpl) GetRulesetById(id string) (*entity.Ruleset, error
 
 	err := r.cp.GetConnection().Model(&ruleset).Where("id = ?", id).Select()
 	if err != nil {
+		if errors.Is(err, pg.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &ruleset, nil
 }
 
-func NewRuleSetRepository(cp db.ConnectionProvider) RuleSetRepository {
+func NewRuleSetRepository(cp db.ConnectionProvider) RulesetRepository {
 	return ruleSetRepositoryImpl{cp: cp}
 }
 

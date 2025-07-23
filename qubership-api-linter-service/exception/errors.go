@@ -41,3 +41,9 @@ const NoApihubAccessMsg = "No access to Apihub with code: $code. Probably incorr
 
 const DuplicateEvent = "10000"
 const DuplicateEventMsg = "Unable to create version lint task: event id $event_id already exists"
+
+const InvalidRevisionFormat = "2500"
+const InvalidRevisionFormatMsg = "Version '$version' has invalid revision format"
+
+const InvalidURLEscape = "6"
+const InvalidURLEscapeMsg = "Failed to unescape parameter $param"

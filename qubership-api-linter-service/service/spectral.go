@@ -15,21 +15,10 @@
 package service
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"os"
-	"os/exec"
-	"path"
-	"runtime"
-	"time"
-
 	"github.com/Netcracker/qubership-api-linter-service/view"
-	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 )
 
-func (v validationServiceImpl) runDocumentsSpectral(documents []string) (*[]view.SpectralDocumentValidationEntity, error) {
+/*func (v validationServiceImpl) runDocumentsSpectral(documents []string) (*[]view.SpectralDocumentValidationEntity, error) {
 	err := os.MkdirAll(tempFolder, 0777)
 	if err != nil {
 		log.Errorf("failed to create temp folder: %v", err.Error())
@@ -58,7 +47,7 @@ func (v validationServiceImpl) runDocumentsSpectral(documents []string) (*[]view
 		log.Infof("spectral validation of file '%s' took %d ms", documentValidation.Filename, documentValidation.CalculationTime)
 	}
 	return &resultReports, nil
-}
+}*/
 
 func calculateSpectralSummary(report []interface{}) view.SpectralResultSummary {
 	summary := view.SpectralResultSummary{}
@@ -83,7 +72,7 @@ func calculateSpectralSummary(report []interface{}) view.SpectralResultSummary {
 	return summary
 }
 
-func spectralExec(validationData []byte) ([]interface{}, string, int64) {
+/*func spectralExec(validationData []byte) ([]interface{}, string, int64) {
 	tempDocumentPath := fmt.Sprintf("%v/%v", tempFolder, uuid.NewString())
 	tempDocumentValidationPath := fmt.Sprintf("%v-result", tempDocumentPath)
 	document, err := os.Create(tempDocumentPath)
@@ -144,3 +133,4 @@ func spectralExec(validationData []byte) ([]interface{}, string, int64) {
 	}
 	return report, "", calculationTime.Milliseconds()
 }
+*/

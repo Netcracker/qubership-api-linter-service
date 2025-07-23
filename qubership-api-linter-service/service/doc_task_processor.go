@@ -21,7 +21,7 @@ type DocTaskProcessor interface {
 	Start()
 }
 
-func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRepository repository.RuleSetRepository,
+func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRepository repository.RulesetRepository,
 	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, executorId string) DocTaskProcessor {
 	return &docTaskProcessorImpl{
 		docTaskRepo:         docTaskRepo,
@@ -35,7 +35,7 @@ func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRe
 
 type docTaskProcessorImpl struct {
 	docTaskRepo         repository.DocLintTaskRepository
-	ruleSetRepository   repository.RuleSetRepository
+	ruleSetRepository   repository.RulesetRepository
 	docResultRepository repository.DocResultRepository
 	cl                  client.ApihubClient
 	spectralExecutor    SpectralExecutor
@@ -62,15 +62,13 @@ func (d docTaskProcessorImpl) Start() {
 			if task != nil {
 				d.processDocTask(context.Background(), *task)
 			}
-
-			log.Infof("docTaskProcessorImpl running") // TODO: remove
 		}
 	})
 }
 
 func (d docTaskProcessorImpl) handleError(ctx context.Context, docTaskId string, err error) {
 	log.Infof("Doc task %s failed with error: %s", docTaskId, err)
-	setErr := d.docTaskRepo.SetDocTaskStatus(ctx, docTaskId, view.StatusError, err.Error())
+	setErr := d.docTaskRepo.SetDocTaskStatus(ctx, docTaskId, view.TaskStatusError, err.Error())
 	if setErr != nil {
 		log.Errorf("Error updating status of doc task %s: %s", docTaskId, err)
 	}
@@ -119,7 +117,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		d.handleError(ctx, task.Id, fmt.Errorf("error getting ruleset: %s", err))
 		return
 	}
-	rulesetPath := filepath.Join(tempDir, "ruleset.yaml") // TODO: file name from DB!
+	rulesetPath := filepath.Join(tempDir, rs.FileName)
 	if err := os.WriteFile(rulesetPath, rs.Data, 0600); err != nil {
 		d.handleError(ctx, task.Id, fmt.Errorf("error writing ruleset file: %s", err))
 		return
@@ -148,7 +146,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			return
 		}
 
-		log.Infof("%+v", calcTime)
+		log.Infof("Processing time = %+vms", calcTime)
 
 		summary := calculateSpectralSummary(report)
 
@@ -171,14 +169,22 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			PackageId:         task.PackageId,
 			Version:           task.Version,
 			Revision:          task.Revision,
+			Slug:              task.FileSlug,
 			FileId:            task.FileId,
-			FileName:          "todo", // FIXME!
-			SpecificationType: "todo", // FIXME!
-			Title:             "todo", // FIXME!
+			SpecificationType: task.APIType,
 			RulesetId:         task.RulesetId,
 			DataHash:          docHash,
-			LintStatus:        view.StatusSuccess, // TODO calculate based on linter
+			LintStatus:        view.StatusSuccess, // TODO calculate based on linter result
 			LintDetails:       "",
+		}
+
+		verEnt := entity.LintedVersion{
+			PackageId:   task.PackageId,
+			Version:     task.Version,
+			Revision:    task.Revision,
+			LintStatus:  view.VersionStatusInProgress,
+			LintDetails: "",
+			LintedAt:    time.Now(),
 		}
 
 		lintFileResult := entity.LintFileResult{
@@ -189,7 +195,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			Summary:       sumAsMap,
 		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, calcTime, docEnt, &lintFileResult)
+		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, calcTime, verEnt, docEnt, &lintFileResult)
 		if err != nil {
 			d.handleError(ctx, task.Id, fmt.Errorf("failed to save lint result with error: %s", err))
 			return
