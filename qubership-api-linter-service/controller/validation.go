@@ -25,6 +25,7 @@ import (
 )
 
 type ValidationController interface {
+	// deprecated
 	ValidateAPI(w http.ResponseWriter, r *http.Request)
 }
 

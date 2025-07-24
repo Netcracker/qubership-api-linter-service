@@ -58,7 +58,7 @@ func (v versionTaskProcessorImpl) StartVersionLintTask(taskId string) error {
 func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	log.Debugf("Start processing version Lint task %s", taskId)
 
-	ctx := context.Background()
+	ctx := secctx.MakeSysadminContext(context.Background())
 
 	task, err := v.verRepo.GetTaskById(ctx, taskId)
 	if err != nil {
@@ -74,9 +74,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 
 	version := fmt.Sprintf("%s@%d", task.Version, task.Revision)
 
-	secC := secctx.CreateSystemContext()
-
-	docs, err := v.cl.GetVersionDocuments(secC, task.PackageId, version)
+	docs, err := v.cl.GetVersionDocuments(ctx, task.PackageId, version)
 	if err != nil {
 		v.handleProcessingFailed(ctx, *task, fmt.Errorf("failed to get version documents: %s", err))
 		return

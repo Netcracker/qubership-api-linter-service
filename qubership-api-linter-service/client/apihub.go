@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -18,13 +19,15 @@ import (
 )
 
 type ApihubClient interface {
-	GetRsaPublicKey(ctx secctx.SecurityContext) (*view.PublicKey, error)
+	GetRsaPublicKey(ctx context.Context) (*view.PublicKey, error)
 	GetApiKeyByKey(apiKey string) (*view.ApihubApiKeyView, error)
 
-	GetVersion(ctx secctx.SecurityContext, id, version string) (*view.VersionContent, error)
+	GetVersion(ctx context.Context, id, version string) (*view.VersionContent, error)
 
-	GetVersionDocuments(ctx secctx.SecurityContext, packageId, version string) (*view.VersionDocuments, error)
-	GetDocumentRawData(ctx secctx.SecurityContext, packageId, version string, fileId string) ([]byte, error)
+	GetVersionDocuments(ctx context.Context, packageId, version string) (*view.VersionDocuments, error)
+	GetDocumentRawData(ctx context.Context, packageId, version string, fileId string) ([]byte, error)
+
+	CheckAuthToken(ctx context.Context, token string) (bool, error)
 
 	/*GetPackageByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (*view.SimplePackage, error)
 	GetPackageIdByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (string, string, error)
@@ -76,13 +79,22 @@ func NewApihubClient(apihubUrl, accessToken string) ApihubClient {
 	} else {
 		apihubHost = parsedApihubUrl.Hostname()
 	}
-	return &apihubClientImpl{apihubUrl: apihubUrl, accessToken: accessToken, apiHubHost: apihubHost}
+
+	tr := http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	cl := http.Client{Transport: &tr, Timeout: time.Second * 60}
+	client := resty.NewWithClient(&cl)
+	if apihubHost != "" {
+		client.SetRedirectPolicy(resty.DomainCheckRedirectPolicy(apihubHost))
+	}
+
+	return &apihubClientImpl{apihubUrl: apihubUrl, accessToken: accessToken, apiHubHost: apihubHost, client: client}
 }
 
 type apihubClientImpl struct {
 	apihubUrl   string
 	accessToken string
 	apiHubHost  string
+	client      *resty.Client
 }
 
 func (a apihubClientImpl) GetApiKeyByKey(apiKey string) (*view.ApihubApiKeyView, error) {
@@ -135,7 +147,7 @@ func checkCustomError(resp *resty.Response) error {
 	return nil
 }
 
-func (a apihubClientImpl) GetRsaPublicKey(ctx secctx.SecurityContext) (*view.PublicKey, error) {
+func (a apihubClientImpl) GetRsaPublicKey(ctx context.Context) (*view.PublicKey, error) {
 	req := a.makeRequest(ctx)
 	resp, err := req.Get(fmt.Sprintf("%s/api/v2/auth/publicKey", a.apihubUrl))
 	if err != nil || resp.StatusCode() != http.StatusOK {
@@ -155,7 +167,8 @@ func (a apihubClientImpl) GetRsaPublicKey(ctx secctx.SecurityContext) (*view.Pub
 	return &publicKey, nil
 }
 
-func (a apihubClientImpl) GetVersion(ctx secctx.SecurityContext, id, version string) (*view.VersionContent, error) {
+func (a apihubClientImpl) GetVersion(ctx context.Context, id, version string) (*view.VersionContent, error) {
+
 	req := a.makeRequest(ctx)
 	resp, err := req.Get(fmt.Sprintf("%s/api/v3/packages/%s/versions/%s", a.apihubUrl, url.PathEscape(id), url.PathEscape(version)))
 	if err != nil {
@@ -178,7 +191,7 @@ func (a apihubClientImpl) GetVersion(ctx secctx.SecurityContext, id, version str
 	return &pVersion, nil
 }
 
-func (a apihubClientImpl) GetVersionDocuments(ctx secctx.SecurityContext, packageId, version string) (*view.VersionDocuments, error) {
+func (a apihubClientImpl) GetVersionDocuments(ctx context.Context, packageId, version string) (*view.VersionDocuments, error) {
 	req := a.makeRequest(ctx)
 	resp, err := req.Get(fmt.Sprintf("%s/api/v2/packages/%s/versions/%s/documents", a.apihubUrl, url.PathEscape(packageId), url.PathEscape(version)))
 	if err != nil {
@@ -202,7 +215,7 @@ func (a apihubClientImpl) GetVersionDocuments(ctx secctx.SecurityContext, packag
 	return &versionDocuments, nil
 }
 
-func (a apihubClientImpl) GetDocumentRawData(ctx secctx.SecurityContext, packageId, version string, fileSlug string) ([]byte, error) {
+func (a apihubClientImpl) GetDocumentRawData(ctx context.Context, packageId, version string, fileSlug string) ([]byte, error) {
 	req := a.makeRequest(ctx)
 	resp, err := req.Get(fmt.Sprintf("%s/api/v2/packages/%s/versions/%s/files/%s/raw", a.apihubUrl, url.PathEscape(packageId), url.PathEscape(version), url.PathEscape(fileSlug)))
 	if err != nil {
@@ -219,6 +232,25 @@ func (a apihubClientImpl) GetDocumentRawData(ctx secctx.SecurityContext, package
 	}
 
 	return resp.Body(), nil
+}
+
+func (a apihubClientImpl) CheckAuthToken(ctx context.Context, token string) (bool, error) {
+	tr := http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	cl := http.Client{Transport: &tr, Timeout: time.Second * 60}
+
+	client := resty.NewWithClient(&cl)
+	req := client.R()
+	req.SetContext(ctx)
+	req.SetHeader("Cookie", fmt.Sprintf("%s=%s", view.AccessTokenCookieName, token))
+
+	resp, err := req.Get(fmt.Sprintf("%s/api/v1/auth/token", a.apihubUrl))
+	if err != nil || resp.StatusCode() != http.StatusOK {
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 /*
@@ -1223,22 +1255,17 @@ func (a apihubClientImpl) GetDocumentRawData(ctx secctx.SecurityContext, package
 		return response.JobId, nil
 	}
 */
-func (a apihubClientImpl) makeRequest(ctx secctx.SecurityContext) *resty.Request {
-	tr := http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-	cl := http.Client{Transport: &tr, Timeout: time.Second * 60}
+func (a apihubClientImpl) makeRequest(ctx context.Context) *resty.Request {
+	req := a.client.R()
+	req.SetContext(ctx)
 
-	client := resty.NewWithClient(&cl)
-	if a.apiHubHost != "" {
-		client.SetRedirectPolicy(resty.DomainCheckRedirectPolicy(a.apiHubHost))
-	}
-	req := client.R()
-	if ctx.IsSystem() {
+	if secctx.IsSystem(ctx) {
 		req.SetHeader("api-key", a.accessToken)
 	} else {
-		if ctx.GetUserToken() != "" {
-			req.SetHeader("Authorization", fmt.Sprintf("Bearer %s", ctx.GetUserToken()))
-		} else if ctx.GetApiKey() != "" {
-			req.SetHeader("api-key", ctx.GetApiKey())
+		if secctx.GetUserToken(ctx) != "" {
+			req.SetHeader("Authorization", fmt.Sprintf("Bearer %s", secctx.GetUserToken(ctx)))
+		} else if secctx.GetApiKey(ctx) != "" {
+			req.SetHeader("api-key", secctx.GetApiKey(ctx))
 		}
 	}
 	return req

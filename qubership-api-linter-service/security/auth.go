@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"crypto/x509"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/client"
@@ -27,7 +28,9 @@ func SetupGoGuardian(apihubClient client.ApihubClient) error {
 		return fmt.Errorf("apihubClient is nil")
 	}
 
-	rsaPublicKeyView, err := apihubClient.GetRsaPublicKey(secctx.CreateSystemContext())
+	ctx := secctx.MakeSysadminContext(context.Background())
+
+	rsaPublicKeyView, err := apihubClient.GetRsaPublicKey(ctx)
 	if err != nil {
 		return fmt.Errorf("rsa public key error - %s", err.Error())
 	}
@@ -54,7 +57,8 @@ func SetupGoGuardian(apihubClient client.ApihubClient) error {
 
 	jwtStrategy := jwt.New(cache, keeper)
 	apihubApiKeyStrategy := NewApihubApiKeyStrategy(apihubClient)
-	strategy = union.New(jwtStrategy, apihubApiKeyStrategy)
+	cookieTokenStrategy := NewCookieTokenStrategy(apihubClient)
+	strategy = union.New(jwtStrategy, apihubApiKeyStrategy, cookieTokenStrategy)
 
 	customJwtStrategy = jwt.New(cache, keeper, token.SetParser(token.XHeaderParser(CustomJwtAuthHeader)))
 	return nil

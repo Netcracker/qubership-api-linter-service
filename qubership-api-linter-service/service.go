@@ -146,14 +146,12 @@ func main() {
 	rulesetController := controller.NewRulesetController(rulesetService)
 	healthController := controller.NewHealthController(readyChan)
 
+	// TODO: remove
 	r.HandleFunc("/api/validate", security.Secure(validationController.ValidateAPI)).Methods(http.MethodPost)
 
-	// TODO: auth!!!!!
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", validationResultController.GetValidationSummaryForVersion).Methods(http.MethodGet)
-
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents", validationResultController.GetValidatedDocumentsForVersion).Methods(http.MethodGet)
-
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", validationResultController.GetValidationResultForDocument).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", security.Secure(validationResultController.GetValidationSummaryForVersion)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents", security.Secure(validationResultController.GetValidatedDocumentsForVersion)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", security.Secure(validationResultController.GetValidationResultForDocument)).Methods(http.MethodGet)
 
 	////////
 

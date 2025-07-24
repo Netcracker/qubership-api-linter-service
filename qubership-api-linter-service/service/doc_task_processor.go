@@ -7,7 +7,6 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
-	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	log "github.com/sirupsen/logrus"
@@ -77,13 +76,12 @@ func (d docTaskProcessorImpl) handleError(ctx context.Context, docTaskId string,
 func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.DocumentLintTask) {
 	// TODO : hash could be in DocumentLintTask, it will allow to avoid downloading the doc and further processing
 	// TODO: shortcut here
-	sc := secctx.CreateSystemContext()
 
 	// TODO: periodically update last_active in goroutine
 
 	// TODO: get document metadata??
 
-	data, err := d.cl.GetDocumentRawData(sc, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug)
+	data, err := d.cl.GetDocumentRawData(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug)
 	if err != nil {
 		d.handleError(ctx, task.Id, err)
 		return

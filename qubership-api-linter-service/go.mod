@@ -14,7 +14,10 @@ require (
 	gopkg.in/resty.v1 v1.12.0
 )
 
-require gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
+require (
+	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
+	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
+)
 
 require (
 	cloud.google.com/go v0.67.0 // indirect

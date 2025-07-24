@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/Netcracker/qubership-api-linter-service/exception"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/service"
 	"net/http"
 )
@@ -51,7 +52,7 @@ func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.Re
 		return
 	}
 
-	result, err := v.validationService.GetVersionSummary(r.Context(), packageId, versionName)
+	result, err := v.validationService.GetVersionSummary(secctx.MakeUserContext(r), packageId, versionName)
 	if err != nil {
 		respondWithError(w, "Failed to get version summary", err)
 	}
@@ -86,7 +87,7 @@ func (v validationResultControllerImpl) GetValidatedDocumentsForVersion(w http.R
 		return
 	}
 
-	result, err := v.validationService.GetValidatedDocuments(r.Context(), packageId, versionName)
+	result, err := v.validationService.GetValidatedDocuments(secctx.MakeUserContext(r), packageId, versionName)
 	if err != nil {
 		respondWithError(w, "Failed to get validated documents for version", err)
 		return
@@ -132,7 +133,7 @@ func (v validationResultControllerImpl) GetValidationResultForDocument(w http.Re
 		return
 	}
 
-	result, err := v.validationService.GetValidationResult(r.Context(), packageId, versionName, slug)
+	result, err := v.validationService.GetValidationResult(secctx.MakeUserContext(r), packageId, versionName, slug)
 	if err != nil {
 		respondWithError(w, "Failed to get validation result for document", err)
 	}

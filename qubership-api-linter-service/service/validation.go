@@ -21,7 +21,6 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
-	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
@@ -69,9 +68,7 @@ type validationServiceImpl struct {
 func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) ([]view.ValidationSummaryForApiType, error) {
 	// TODO: Summary for each API type
 
-	sc := secctx.CreateSystemContext() // FIXME: use user context
-
-	ver, rev, err := v.getVersionAndRevision(sc, packageId, version)
+	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
 	}
@@ -196,9 +193,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 func (v validationServiceImpl) GetValidatedDocuments(ctx context.Context, packageId string, version string) ([]view.ValidatedDocument, error) {
 	var result []view.ValidatedDocument
 
-	sc := secctx.CreateSystemContext() // FIXME: use user context
-
-	ver, rev, err := v.getVersionAndRevision(sc, packageId, version)
+	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
 	}
@@ -214,9 +209,7 @@ func (v validationServiceImpl) GetValidatedDocuments(ctx context.Context, packag
 }
 
 func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
-
-	sc := secctx.CreateSystemContext() // FIXME: use user context
-	ver, rev, err := v.getVersionAndRevision(sc, packageId, version)
+	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
 	}
@@ -293,14 +286,14 @@ func makeSpectralSummary(summary map[string]interface{}) (*view.IssuesSummary, e
 	return &result, nil
 }
 
-func (v validationServiceImpl) getVersionAndRevision(securityContext secctx.SecurityContext, packageId string, version string) (string, int, error) {
+func (v validationServiceImpl) getVersionAndRevision(ctx context.Context, packageId string, version string) (string, int, error) {
 	ver, rev, err := utils.SplitVersionRevision(version)
 	if err != nil {
 		return "", 0, err
 	}
 
 	if rev == 0 {
-		versionView, err := v.apihubClient.GetVersion(securityContext, packageId, version)
+		versionView, err := v.apihubClient.GetVersion(ctx, packageId, version)
 		if err != nil {
 			return "", 0, err
 		}
