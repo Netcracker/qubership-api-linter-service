@@ -252,6 +252,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/rulesets/{id}/activation-history:
+    get:
+      tags:
+        - Ruleset Management
+      summary: Get activation history for a ruleset
+      description: >
+        Returns the activation history for the specified ruleset.
+        Shows periods when the ruleset was activated and deactivated.
+        Only the latest 100 activation records are returned.
+      operationId: getRulesetActivationHistory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique ruleset ID
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RulesetActivationHistory"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/rulesets/{id}/download:
     get:
       tags:
@@ -553,7 +595,6 @@ components:
         - status
         - createdAt
         - canBeDeleted
-        - activationHistory
       properties:
         id:
           type: string
@@ -572,23 +613,6 @@ components:
           enum:
             - active
             - inactive
-        activationHistory:
-          description: |
-            Information about periods when ruleset was activated/deactivated. 
-            If empty, means that ruleset was never activated.
-            Important: Only the latest 100 activation records are returned.
-          type: array
-          items:
-            type: object
-            properties:
-              activeFrom:
-                description: Date when ruleset was activated.
-                type: string
-                format: date-time
-              activeTo:
-                description: Date when ruleset was deactivated.
-                type: string
-                format: date-time
         createdAt:
           description: Date of ruleset creation.
           type: string
@@ -601,6 +625,36 @@ components:
                   - there is no existing version revision that was validated against current ruleset.
           type: boolean
           example: true
+    RulesetActivationHistory:
+      description: Activation history for a ruleset
+      type: object
+      required:
+        - rulesetId
+        - activationHistory
+      properties:
+        rulesetId:
+          type: string
+          description: Unique identifier of the ruleset
+        activationHistory:
+          description: |
+            Information about periods when ruleset was activated/deactivated.
+            If empty, means that ruleset was never activated.
+            Only the latest 100 activation records are returned.
+          type: array
+          items:
+            type: object
+            required:
+              - activeFrom
+            properties:
+              activeFrom:
+                description: Date when ruleset was activated.
+                type: string
+                format: date-time
+              activeTo:
+                description: Date when ruleset was deactivated. Null if currently active.
+                type: string
+                format: date-time
+                nullable: true
     RulesetCreate:
       description: Parameters for creating a ruleset
       type: object
