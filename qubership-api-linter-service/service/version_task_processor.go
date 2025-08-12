@@ -90,7 +90,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	for _, doc := range docs.Documents {
 		_, exists := typeToLinter[doc.Type]
 		if !exists {
-			linter, rulesetId, err := v.linterSelectorService.SelectLinterAndRuleset(doc.Type)
+			linter, rulesetId, err := v.linterSelectorService.SelectLinterAndRuleset(ctx, doc.Type)
 
 			typeToLinter[doc.Type] = linterAndRuleset{
 				linter:    linter,
@@ -103,6 +103,11 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	var docTasks []entity.DocumentLintTask
 
 	for _, doc := range docs.Documents {
+		if !supportedApiType(doc.Type) {
+			log.Infof("Skipping document %s with unsupported api type: %s", doc.Slug, doc.Type)
+			continue
+		}
+
 		lr := typeToLinter[doc.Type]
 
 		status := view.TaskStatusNotStarted
@@ -152,6 +157,15 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	}
 
 	log.Infof("Version lint task with id %s is processed, %d document lint task(s) created", taskId, len(docTasks))
+}
+
+func supportedApiType(at view.ApiType) bool {
+	switch at {
+	case view.OpenAPI20Type, view.OpenAPI30Type, view.OpenAPI31Type:
+		return true
+	default:
+		return false
+	}
 }
 
 func (v versionTaskProcessorImpl) acquireFreeTasks() {

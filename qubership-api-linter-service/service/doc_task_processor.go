@@ -7,6 +7,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	log "github.com/sirupsen/logrus"
@@ -59,7 +60,7 @@ func (d docTaskProcessorImpl) Start() {
 				continue
 			}
 			if task != nil {
-				d.processDocTask(context.Background(), *task)
+				d.processDocTask(secctx.MakeSysadminContext(context.Background()), *task)
 			}
 		}
 	})
@@ -110,7 +111,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 
 	docHash := utils.CreateSHA256Hash(data)
 
-	rs, err := d.ruleSetRepository.GetRulesetById(task.RulesetId)
+	rs, err := d.ruleSetRepository.GetRulesetWithData(ctx, task.RulesetId)
 	if err != nil {
 		d.handleError(ctx, task.Id, fmt.Errorf("error getting ruleset: %s", err))
 		return

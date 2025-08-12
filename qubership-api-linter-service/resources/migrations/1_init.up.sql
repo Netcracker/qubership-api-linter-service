@@ -59,19 +59,21 @@ values ('e3fcd2b3-187b-4bcf-970d-d6dbcf30a83a', 'default-openapi-3-1', 'active',
 
 create table ruleset_activation_history
 (
-    ruleset_id   varchar
+    ruleset_id     varchar
         constraint ruleset_activation_history_ruleset_id_fk
             references ruleset (id),
-    activated_at timestamp without time zone,
-    activated_by varchar
+    activated_at   timestamp without time zone not null,
+    activated_by   varchar                     not null,
+    deactivated_at timestamp without time zone,
+    deactivated_by varchar
 );
 
 insert into ruleset_activation_history
-values ('f4bd4da4-56d4-42ea-9667-36fb1a4c53c6', now(), 'system');
+values ('f4bd4da4-56d4-42ea-9667-36fb1a4c53c6', now(), 'system', null, '');
 insert into ruleset_activation_history
-values ('bc356817-06dc-45a7-a91b-af0d9ad7a2eb', now(), 'system');
+values ('bc356817-06dc-45a7-a91b-af0d9ad7a2eb', now(), 'system', null, '');
 insert into ruleset_activation_history
-values ('e3fcd2b3-187b-4bcf-970d-d6dbcf30a83a', now(), 'system');
+values ('e3fcd2b3-187b-4bcf-970d-d6dbcf30a83a', now(), 'system', null, '');
 
 ---------- tasks -------------
 
@@ -84,7 +86,7 @@ create table version_lint_task
     revision      integer                     not null,
     event_id      varchar,
     created_at    timestamp without time zone not null,
-
+    created_by    varchar                     not null,
     status        varchar                     not null, -- task status
     details       varchar,                              -- task details
     executor_id   varchar,
@@ -104,9 +106,9 @@ create table document_lint_task
         constraint doc_tasks_pk primary key,
     version_lint_task_id varchar                     not null,
 
-    package_id           varchar                     not null, -- or join version_lint_task?
-    version              varchar                     not null, -- or join version_lint_task?
-    revision             integer                     not null, -- or join version_lint_task?
+    package_id           varchar                     not null,
+    version              varchar                     not null,
+    revision             integer                     not null,
     file_id              varchar                     not null,
     file_slug            varchar                     not null,
 

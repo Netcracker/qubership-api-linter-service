@@ -195,40 +195,6 @@ func (r *versionLintTaskRepositoryImpl) GetRunningTaskForVersion(ctx context.Con
 	return tasks, nil
 }
 
-/*func (r *versionLintTaskRepositoryImpl) FindFreeVersionTask(ctx context.Context, executorId string) (*entity.VersionLintTask, error) {
-	var task entity.VersionLintTask
-
-	err := r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
-		err := tx.ModelContext(ctx, &task).
-			Where("status = ?", "none").  // TODO: constant here
-			Where("executor_id IS NULL"). // TODO: or restarts, last_active
-			Order("created_at ASC").
-			For("UPDATE SKIP LOCKED").
-			Limit(1).
-			Select()
-		if err != nil {
-			return err
-		}
-
-		// Update the task to assign it
-		task.ExecutorId = executorId
-		task.Status = "running"
-		// todo: last active
-		_, err = tx.ModelContext(ctx, &task).
-			WherePK().
-			Update()
-		return err
-	})
-	if err != nil {
-		if errors.Is(err, pg.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return &task, err
-}*/
-
 var queryVersionTask = fmt.Sprintf("select * from version_lint_task b where "+
 	"(b.status='%s' or ((b.status='%s' or b.status='%s') and b.last_active < (now() - interval '%d seconds'))) "+
 	"order by b.created_at ASC limit 1 for no key update skip locked", view.TaskStatusNotStarted, view.TaskStatusProcessing, view.TaskStatusWaitingForDocs, buildKeepaliveTimeoutSec)

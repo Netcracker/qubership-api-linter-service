@@ -1,13 +1,14 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 )
 
 type LinterSelectorService interface {
-	SelectLinterAndRuleset(t view.ApiType) (view.Linter, string, error)
+	SelectLinterAndRuleset(ctx context.Context, t view.ApiType) (view.Linter, string, error)
 }
 
 type linterSelectorServiceImpl struct {
@@ -20,11 +21,11 @@ func NewLinterSelectorService(repo repository.RulesetRepository) LinterSelectorS
 	}
 }
 
-func (l linterSelectorServiceImpl) SelectLinterAndRuleset(t view.ApiType) (view.Linter, string, error) {
+func (l linterSelectorServiceImpl) SelectLinterAndRuleset(ctx context.Context, t view.ApiType) (view.Linter, string, error) {
 	var linter view.Linter
 	var rulesetId string
 
-	rulesets, err := l.repo.GetActiveRulesets(t)
+	rulesets, err := l.repo.GetActiveRulesets(ctx, t)
 	if err != nil {
 		return view.UnknownLinter, "", err
 	}

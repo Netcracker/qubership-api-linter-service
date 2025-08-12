@@ -1,10 +1,13 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/exception"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/buraksezer/olric"
@@ -57,7 +60,11 @@ func (p *publishEventListenerImpl) listen(message olric.DTopicMessage) {
 		return
 	}
 
-	taskId, err := p.validationService.ValidateVersion(notification.PackageId, notification.Version, notification.Revision, notification.EventId)
+	ctx := secctx.MakeSysadminContext(context.Background())
+
+	version := fmt.Sprintf("%s@%d", notification.Version, notification.Revision)
+
+	taskId, err := p.validationService.ValidateVersion(ctx, notification.PackageId, version, notification.EventId)
 	if err != nil {
 		dupEvent := false
 		var customError *exception.CustomError

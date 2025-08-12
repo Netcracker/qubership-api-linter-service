@@ -138,29 +138,36 @@ func main() {
 	validationService := service.NewValidationService(versionLintTaskRepository, versionResultRepository, lintResultRepository, ruleSetRepository, versionTaskProcessor, apihubClient, executorId)
 	publishEventListener := service.NewPublishEventListener(olricProvider, validationService)
 	rulesetService := service.NewRulesetService(ruleSetRepository)
+	authorizationService := service.NewAuthorizationService(apihubClient)
 
-	validationController := controller.NewValidationController(validationService)
+	validationController := controller.NewValidationController(validationService, authorizationService)
 
-	validationResultController := controller.NewValidationResultController(validationService)
+	validationResultController := controller.NewValidationResultController(validationService, authorizationService)
 
-	rulesetController := controller.NewRulesetController(rulesetService)
+	rulesetController := controller.NewRulesetController(rulesetService, authorizationService)
 	healthController := controller.NewHealthController(readyChan)
 
-	// TODO: remove
-	r.HandleFunc("/api/validate", security.Secure(validationController.ValidateAPI)).Methods(http.MethodPost)
+	// Validate version
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", security.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
 
+	// Validation result
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", security.Secure(validationResultController.GetValidationSummaryForVersion)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents", security.Secure(validationResultController.GetValidatedDocumentsForVersion)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", security.Secure(validationResultController.GetValidationResultForDocument)).Methods(http.MethodGet)
 
-	////////
+	// Ruleset management
+	r.HandleFunc("/api/v1/rulesets", security.Secure(rulesetController.CreateRuleset)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", security.Secure(rulesetController.ActivateRuleset)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/rulesets", security.Secure(rulesetController.ListRulesets)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", security.Secure(rulesetController.GetRuleset)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/data", security.Secure(rulesetController.GetRulesetData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", security.Secure(rulesetController.GetRulesetActivationHistory)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", security.Secure(rulesetController.DeleteRuleset)).Methods(http.MethodDelete)
 
-	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", rulesetController.GetRuleset).Methods(http.MethodGet)
-
-	// TODO:
-
+	// Service endpoints
 	r.HandleFunc("/live", healthController.HandleLiveRequest).Methods(http.MethodGet)
 	r.HandleFunc("/ready", healthController.HandleReadyRequest).Methods(http.MethodGet)
+	r.PathPrefix("/debug/").Handler(http.DefaultServeMux) // TODO: env to config!
 
 	publishEventListener.Start()
 	docTaskProcessor.Start()
@@ -169,6 +176,7 @@ func main() {
 		"/api/",
 		"/live/",
 		"/ready/",
+		"/debug/",
 	}
 	for _, prefix := range knownPathPrefixes {
 		//add routing for unknown paths with known path prefixes

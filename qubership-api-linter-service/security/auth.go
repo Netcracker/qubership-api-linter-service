@@ -58,7 +58,8 @@ func SetupGoGuardian(apihubClient client.ApihubClient) error {
 	jwtStrategy := jwt.New(cache, keeper)
 	apihubApiKeyStrategy := NewApihubApiKeyStrategy(apihubClient)
 	cookieTokenStrategy := NewCookieTokenStrategy(apihubClient)
-	strategy = union.New(jwtStrategy, apihubApiKeyStrategy, cookieTokenStrategy)
+	patStrategy := NewApihubPATStrategy(apihubClient)
+	strategy = union.New(jwtStrategy, apihubApiKeyStrategy, cookieTokenStrategy, patStrategy)
 
 	customJwtStrategy = jwt.New(cache, keeper, token.SetParser(token.XHeaderParser(CustomJwtAuthHeader)))
 	return nil

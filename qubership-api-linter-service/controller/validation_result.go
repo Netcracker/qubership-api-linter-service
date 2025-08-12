@@ -13,23 +13,25 @@ type ValidationResultController interface {
 	GetValidationResultForDocument(w http.ResponseWriter, r *http.Request)
 }
 
-func NewValidationResultController(validationService service.ValidationService) ValidationResultController {
+func NewValidationResultController(validationService service.ValidationService, authorizationService service.AuthorizationService) ValidationResultController {
 	return &validationResultControllerImpl{
-		validationService: validationService,
+		validationService:    validationService,
+		authorizationService: authorizationService,
 	}
 }
 
 type validationResultControllerImpl struct {
-	validationService service.ValidationService
+	validationService    service.ValidationService
+	authorizationService service.AuthorizationService
 }
 
 func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.ResponseWriter, r *http.Request) {
 	packageId := getStringParam(r, "packageId")
-	// FIXME: authorization check!
-	/*ctx := secctx.Create(r)
-	sufficientPrivileges, err := v.roleService.HasRequiredPermissions(ctx, packageId, view.ReadPermission)
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := v.authorizationService.HasReadPackagePermission(ctx, packageId)
 	if err != nil {
-		handlePkgRedirectOrRespondWithError(w, r, o.ptHandler, packageId, "Failed to check user privileges", err)
+		respondWithError(w, "Failed to check permissions", err)
 		return
 	}
 	if !sufficientPrivileges {
@@ -39,7 +41,8 @@ func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.Re
 			Message: exception.InsufficientPrivilegesMsg,
 		})
 		return
-	}*/
+	}
+
 	versionName, err := getUnescapedStringParam(r, "version")
 	if err != nil {
 		RespondWithCustomError(w, &exception.CustomError{
@@ -52,7 +55,7 @@ func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.Re
 		return
 	}
 
-	result, err := v.validationService.GetVersionSummary(secctx.MakeUserContext(r), packageId, versionName)
+	result, err := v.validationService.GetVersionSummary(ctx, packageId, versionName)
 	if err != nil {
 		respondWithError(w, "Failed to get version summary", err)
 	}
@@ -60,6 +63,7 @@ func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.Re
 		//TODO: how to handle?
 
 		// TODO: 404 or status==notValidated ????????
+		// TODO: if not validated - still load API types??? 404 is better
 
 		RespondWithCustomError(w, &exception.CustomError{
 			Status:  http.StatusNotFound,
@@ -74,7 +78,22 @@ func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.Re
 
 func (v validationResultControllerImpl) GetValidatedDocumentsForVersion(w http.ResponseWriter, r *http.Request) {
 	packageId := getStringParam(r, "packageId")
-	// FIXME: authorization check!
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := v.authorizationService.HasReadPackagePermission(ctx, packageId)
+	if err != nil {
+		respondWithError(w, "Failed to check permissions", err)
+		return
+	}
+	if !sufficientPrivileges {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusForbidden,
+			Code:    exception.InsufficientPrivileges,
+			Message: exception.InsufficientPrivilegesMsg,
+		})
+		return
+	}
+
 	versionName, err := getUnescapedStringParam(r, "version")
 	if err != nil {
 		RespondWithCustomError(w, &exception.CustomError{
@@ -87,7 +106,7 @@ func (v validationResultControllerImpl) GetValidatedDocumentsForVersion(w http.R
 		return
 	}
 
-	result, err := v.validationService.GetValidatedDocuments(secctx.MakeUserContext(r), packageId, versionName)
+	result, err := v.validationService.GetValidatedDocuments(ctx, packageId, versionName)
 	if err != nil {
 		respondWithError(w, "Failed to get validated documents for version", err)
 		return
@@ -108,7 +127,22 @@ func (v validationResultControllerImpl) GetValidatedDocumentsForVersion(w http.R
 
 func (v validationResultControllerImpl) GetValidationResultForDocument(w http.ResponseWriter, r *http.Request) {
 	packageId := getStringParam(r, "packageId")
-	// FIXME: authorization check!
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := v.authorizationService.HasReadPackagePermission(ctx, packageId)
+	if err != nil {
+		respondWithError(w, "Failed to check permissions", err)
+		return
+	}
+	if !sufficientPrivileges {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusForbidden,
+			Code:    exception.InsufficientPrivileges,
+			Message: exception.InsufficientPrivilegesMsg,
+		})
+		return
+	}
+
 	versionName, err := getUnescapedStringParam(r, "version")
 	if err != nil {
 		RespondWithCustomError(w, &exception.CustomError{

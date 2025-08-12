@@ -21,6 +21,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
@@ -28,7 +29,7 @@ import (
 )
 
 type ValidationService interface {
-	ValidateVersion(packageId string, version string, revision int, eventId string) (string, error)
+	ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error)
 	GetVersionSummary(ctx context.Context, packageId string, version string) ([]view.ValidationSummaryForApiType, error)
 	GetValidatedDocuments(ctx context.Context, packageId string, version string) ([]view.ValidatedDocument, error)
 	GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error)
@@ -93,7 +94,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 			return nil, err
 		}
 
-		rulesetMap, err := v.makeRulesetMap(makeRulesetIdsFromTasks(docTasks))
+		rulesetMap, err := v.makeRulesetMap(ctx, makeRulesetIdsFromTasks(docTasks))
 		if err != nil {
 			return nil, err
 		}
@@ -125,7 +126,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 		return result, nil
 	}
 
-	rulesetMap, err := v.makeRulesetMap(makeRulesetIdsFromLintedDocs(lintedDocs))
+	rulesetMap, err := v.makeRulesetMap(ctx, makeRulesetIdsFromLintedDocs(lintedDocs))
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +245,7 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 		})
 	}
 
-	ruleset, err := v.rulesetRepository.GetRulesetById(lintedDocument.RulesetId)
+	ruleset, err := v.rulesetRepository.GetRulesetById(ctx, lintedDocument.RulesetId)
 	if err != nil {
 		return nil, err
 	}
@@ -308,22 +309,30 @@ func (v validationServiceImpl) getVersionAndRevision(ctx context.Context, packag
 	return ver, rev, nil
 }
 
-func (v validationServiceImpl) ValidateVersion(packageId string, version string, revision int, eventId string) (string, error) {
+func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error) {
+	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
+	if err != nil {
+		return "", err
+	}
+
+	userId := secctx.GetUserId(ctx)
+
 	ent := entity.VersionLintTask{
 		Id:           uuid.NewString(),
 		PackageId:    packageId,
-		Version:      version,
-		Revision:     revision,
-		Status:       "none", // TODO: const
+		Version:      ver,
+		Revision:     rev,
+		Status:       view.TaskStatusNotStarted,
 		Details:      "",
 		CreatedAt:    time.Now(),
+		CreatedBy:    userId,
 		ExecutorId:   v.executorId, // reserve the task for current instance to start processing immediately
 		LastActive:   time.Now(),
 		EventId:      eventId, // optional
 		RestartCount: 0,
 		Priority:     0,
 	}
-	err := v.verTaskRepo.SaveVersionTask(context.Background(), ent)
+	err = v.verTaskRepo.SaveVersionTask(context.Background(), ent)
 	if err != nil {
 		return "", err
 	}
@@ -338,12 +347,12 @@ func (v validationServiceImpl) ValidateVersion(packageId string, version string,
 
 const tempFolder = "tmp"
 
-func (v validationServiceImpl) makeRulesetMap(rulesetIds []string) (map[string]entity.Ruleset, error) {
+func (v validationServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds []string) (map[string]entity.Ruleset, error) {
 	rulesetMap := make(map[string]entity.Ruleset)
 	for _, rulesetId := range rulesetIds {
 		_, exists := rulesetMap[rulesetId]
 		if !exists {
-			ruleset, err := v.rulesetRepository.GetRulesetById(rulesetId)
+			ruleset, err := v.rulesetRepository.GetRulesetById(ctx, rulesetId)
 			if err != nil {
 				return nil, err
 			}

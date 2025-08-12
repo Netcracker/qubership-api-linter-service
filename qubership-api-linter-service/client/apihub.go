@@ -28,6 +28,7 @@ type ApihubClient interface {
 	GetDocumentRawData(ctx context.Context, packageId, version string, fileId string) ([]byte, error)
 
 	CheckAuthToken(ctx context.Context, token string) (bool, error)
+	GetUserByPAT(ctx context.Context, token string) (*view.User, error)
 
 	/*GetPackageByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (*view.SimplePackage, error)
 	GetPackageIdByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (string, string, error)
@@ -251,6 +252,32 @@ func (a apihubClientImpl) CheckAuthToken(ctx context.Context, token string) (boo
 		return false, err
 	}
 	return true, nil
+}
+
+func (a apihubClientImpl) GetUserByPAT(ctx context.Context, token string) (*view.User, error) {
+	tr := http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	cl := http.Client{Transport: &tr, Timeout: time.Second * 60}
+
+	client := resty.NewWithClient(&cl)
+	req := client.R()
+	req.SetContext(ctx)
+	req.SetHeader("X-Personal-Access-Token", token)
+
+	resp, err := req.Get(fmt.Sprintf("%s/api/v1/user", a.apihubUrl))
+	if err != nil || resp.StatusCode() != http.StatusOK {
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var user view.User
+	err = json.Unmarshal(resp.Body(), &user)
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }
 
 /*
@@ -1266,6 +1293,8 @@ func (a apihubClientImpl) makeRequest(ctx context.Context) *resty.Request {
 			req.SetHeader("Authorization", fmt.Sprintf("Bearer %s", secctx.GetUserToken(ctx)))
 		} else if secctx.GetApiKey(ctx) != "" {
 			req.SetHeader("api-key", secctx.GetApiKey(ctx))
+		} else if secctx.GetPersonalAccessToken(ctx) != "" {
+			req.SetHeader("X-Personal-Access-Token", secctx.GetPersonalAccessToken(ctx))
 		}
 	}
 	return req

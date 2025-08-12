@@ -8,73 +8,39 @@ import (
 )
 
 type SecurityContext interface {
-	GetUserId() string
-	GetUserToken() string
-	GetApiKey() string
+	getUserId() string
+	getUserToken() string
+	getApiKey() string
 	IsSystem() bool
-}
-
-// deprecated
-func Create(r *http.Request) SecurityContext {
-	user := auth.User(r)
-	userId := user.GetID()
-	token := getAuthorizationToken(r)
-	if token != "" {
-		return &securityContextImpl{
-			userId:   userId,
-			token:    token,
-			apiKey:   "",
-			isSystem: false,
-		}
-	} else {
-		return &securityContextImpl{
-			userId:   userId,
-			token:    "",
-			apiKey:   getApihubApiKey(r),
-			isSystem: false,
-		}
-	}
 }
 
 func MakeUserContext(r *http.Request) context.Context {
 	user := auth.User(r)
 	userId := user.GetID()
+
 	token := getAuthorizationToken(r)
-	if token != "" {
-		return context.WithValue(r.Context(), "secCtx", securityContextImpl{
-			userId:   userId,
-			token:    token,
-			apiKey:   "",
-			isSystem: false,
-		})
-	} else {
-		return context.WithValue(r.Context(), "secCtx", securityContextImpl{
-			userId:   userId,
-			token:    "",
-			apiKey:   getApihubApiKey(r),
-			isSystem: false,
-		})
-	}
+	apiKey := getApihubApiKey(r)
+	pat := getPersonalAccessToken(r)
+
+	return context.WithValue(r.Context(), "secCtx", securityContextImpl{
+		userId:              userId,
+		token:               token,
+		apiKey:              apiKey,
+		personalAccessToken: pat,
+		isSystem:            false,
+	})
 }
 
 func MakeSysadminContext(ctx context.Context) context.Context {
-	return context.WithValue(ctx, "secCtx", securityContextImpl{isSystem: true})
-}
-
-func GetUserContext(ctx context.Context) {
-
-}
-
-// deprecated
-func CreateSystemContext() SecurityContext {
-	return &securityContextImpl{isSystem: true}
+	return context.WithValue(ctx, "secCtx", securityContextImpl{userId: "system", isSystem: true})
 }
 
 type securityContextImpl struct {
-	userId   string
-	token    string
-	apiKey   string
-	isSystem bool
+	userId              string
+	token               string
+	apiKey              string
+	personalAccessToken string
+	isSystem            bool
 }
 
 func getAuthorizationToken(r *http.Request) string {
@@ -82,6 +48,10 @@ func getAuthorizationToken(r *http.Request) string {
 		return token
 	}
 	return getTokenFromCookie(r)
+}
+
+func getPersonalAccessToken(r *http.Request) string {
+	return r.Header.Get("X-Personal-Access-Token")
 }
 
 func getTokenFromAuthHeader(r *http.Request) string {
@@ -105,15 +75,6 @@ func getApihubApiKey(r *http.Request) string {
 	return r.Header.Get("api-key")
 }
 
-func (ctx securityContextImpl) GetUserId() string {
-	return ctx.userId
-}
-func (ctx securityContextImpl) GetUserToken() string {
-	return ctx.token
-}
-func (ctx securityContextImpl) GetApiKey() string {
-	return ctx.apiKey
-}
 func (ctx securityContextImpl) IsSystem() bool { return ctx.isSystem }
 
 func IsSystem(ctx context.Context) bool {
@@ -129,7 +90,7 @@ func GetUserId(ctx context.Context) string {
 	if val == nil {
 		return ""
 	}
-	return val.(securityContextImpl).GetUserId()
+	return val.(securityContextImpl).userId
 }
 
 func GetUserToken(ctx context.Context) string {
@@ -137,7 +98,7 @@ func GetUserToken(ctx context.Context) string {
 	if val == nil {
 		return ""
 	}
-	return val.(securityContextImpl).GetUserToken()
+	return val.(securityContextImpl).token
 }
 
 func GetApiKey(ctx context.Context) string {
@@ -145,5 +106,13 @@ func GetApiKey(ctx context.Context) string {
 	if val == nil {
 		return ""
 	}
-	return val.(securityContextImpl).GetApiKey()
+	return val.(securityContextImpl).apiKey
+}
+
+func GetPersonalAccessToken(ctx context.Context) string {
+	val := ctx.Value("secCtx")
+	if val == nil {
+		return ""
+	}
+	return val.(securityContextImpl).personalAccessToken
 }

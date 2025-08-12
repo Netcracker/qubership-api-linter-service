@@ -16,6 +16,7 @@ type VersionLintTask struct {
 	Status       view.TaskStatus `pg:"status,type:varchar,notnull"`
 	Details      string          `pg:"details,type:varchar"`
 	CreatedAt    time.Time       `pg:"created_at,type:timestamp without time zone,notnull"`
+	CreatedBy    string          `pg:"created_by,type:varchar,notnull"`
 	ExecutorId   string          `pg:"executor_id,type:varchar"`
 	LastActive   time.Time       `pg:"last_active,type:timestamp without time zone,notnull"`
 	RestartCount int             `pg:"restart_count,type:integer,notnull,use_zero"`

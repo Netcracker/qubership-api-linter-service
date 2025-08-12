@@ -47,3 +47,24 @@ const InvalidRevisionFormatMsg = "Version '$version' has invalid revision format
 
 const InvalidURLEscape = "6"
 const InvalidURLEscapeMsg = "Failed to unescape parameter $param"
+
+const InvalidParameterValue = "9"
+const InvalidParameterValueMsg = "Value '$value' is not allowed for parameter $param"
+
+const BadRequestBody = "10"
+const BadRequestBodyMsg = "Failed to decode body"
+
+const RequiredParamsMissing = "15"
+const RequiredParamsMissingMsg = "Required parameters are missing: $params"
+
+const IncorrectMultipartFile = "1000"
+const IncorrectMultipartFileMsg = "Unable to read Multipart file"
+
+const InsufficientPrivileges = "1900"
+const InsufficientPrivilegesMsg = "You don't have enough privileges to perform this operation"
+
+const EntityNotFound = "100"
+const EntityNotFoundMsg = "$entity with id $id is not found"
+
+const RulesetCanNotBeDeleted = "2000"
+const RulesetCanNotBeDeletedMsg = "Ruleset with $id can not be deleted"
