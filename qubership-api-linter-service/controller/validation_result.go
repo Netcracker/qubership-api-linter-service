@@ -60,18 +60,13 @@ func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.Re
 		respondWithError(w, "Failed to get version summary", err)
 	}
 	if result == nil {
-		//TODO: how to handle?
-
-		// TODO: 404 or status==notValidated ????????
-		// TODO: if not validated - still load API types??? 404 is better
-
 		RespondWithCustomError(w, &exception.CustomError{
 			Status:  http.StatusNotFound,
-			Code:    "1234",           // TODO
-			Message: "lint not found", // TODO
-			Params:  nil,
-			Debug:   "",
+			Code:    exception.LintResultNotFound,
+			Message: exception.LintResultNotFoundMsg,
+			Params:  map[string]interface{}{"packageId": packageId, "version": versionName},
 		})
+		return
 	}
 	respondWithJson(w, http.StatusOK, result)
 }
@@ -112,15 +107,13 @@ func (v validationResultControllerImpl) GetValidatedDocumentsForVersion(w http.R
 		return
 	}
 	if result == nil {
-		//TODO: how to handle? Err from service?
-		// TODO: 404 or status==notValidated ????????
 		RespondWithCustomError(w, &exception.CustomError{
 			Status:  http.StatusNotFound,
-			Code:    "1234",           // TODO
-			Message: "lint not found", // TODO
-			Params:  nil,
-			Debug:   "",
+			Code:    exception.LintResultNotFound,
+			Message: exception.LintResultNotFoundMsg,
+			Params:  map[string]interface{}{"packageId": packageId, "version": versionName},
 		})
+		return
 	}
 	respondWithJson(w, http.StatusOK, result)
 }
@@ -172,15 +165,13 @@ func (v validationResultControllerImpl) GetValidationResultForDocument(w http.Re
 		respondWithError(w, "Failed to get validation result for document", err)
 	}
 	if result == nil {
-		//TODO: how to handle?
-		// TODO: 404 or status==notValidated ????????
 		RespondWithCustomError(w, &exception.CustomError{
 			Status:  http.StatusNotFound,
-			Code:    "1234",           // TODO
-			Message: "lint not found", // TODO
-			Params:  nil,
-			Debug:   "",
+			Code:    exception.LintResultNotFound,
+			Message: exception.LintResultNotFoundMsg,
+			Params:  map[string]interface{}{"packageId": packageId, "version": versionName},
 		})
+		return
 	}
 	respondWithJson(w, http.StatusOK, result)
 }
