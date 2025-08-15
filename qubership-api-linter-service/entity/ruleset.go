@@ -44,6 +44,8 @@ func MakeRulesetView(ent Ruleset) view.Ruleset {
 		Id:           ent.Id,
 		Name:         ent.Name,
 		Status:       ent.Status,
+		Linter:       ent.Linter,
+		ApiType:      ent.ApiType,
 		CreatedAt:    ent.CreatedAt,
 		CanBeDeleted: ent.CanBeDeleted,
 	}

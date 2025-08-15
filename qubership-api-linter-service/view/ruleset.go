@@ -10,12 +10,13 @@ type RulesetMetadata struct {
 }
 
 type Ruleset struct {
-	Id     string        `json:"id"`
-	Name   string        `json:"name"`
-	Status RulesetStatus `json:"status"`
-	//ActivationHistory []ActivationRecord `json:"activationHistory"`
-	CreatedAt    time.Time `json:"createdAt"`
-	CanBeDeleted bool      `json:"canBeDeleted"`
+	Id           string        `json:"id"`
+	Name         string        `json:"name"`
+	Status       RulesetStatus `json:"status"`
+	Linter       Linter        `json:"linter"`
+	ApiType      ApiType       `json:"apiType"`
+	CreatedAt    time.Time     `json:"createdAt"`
+	CanBeDeleted bool          `json:"canBeDeleted"`
 }
 
 type RulesetStatus string

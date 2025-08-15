@@ -99,6 +99,14 @@ func (r rulesetServiceImpl) ListRulesets(ctx context.Context) ([]view.Ruleset, e
 
 	result := make([]view.Ruleset, 0)
 
+	// TODO: need to sort the rulesets properly!
+	/*
+	   The sorting follows a strict order:
+	     1. The currently active ruleset (always appears first).
+	     2. Rulesets that have never been activated (in order of creation).
+	     3. All other rulesets, sorted by the latest activation date (most recent first).
+	*/
+
 	for _, ent := range ents {
 		result = append(result, entity.MakeRulesetView(ent))
 	}
