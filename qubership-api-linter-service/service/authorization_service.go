@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
+	"github.com/Netcracker/qubership-api-linter-service/view"
 )
 
 type AuthorizationService interface {
@@ -31,16 +32,40 @@ func (a authorizationServiceImpl) HasRulesetManagementPermission(ctx context.Con
 }
 
 func (a authorizationServiceImpl) HasReadPackagePermission(ctx context.Context, packageId string) (bool, error) {
-	// TODO: Authorization check:
-	// TODO: make sure that user have a access to the version
-	// TODO: send special request to Apihub to check it!
-	// TODO: smt like remote HasRequiredPermissions(ctx, packageId, view.ReadPermission)
-
-	//TODO implement me
-	return true, nil // FIXME: just for testing!
+	if secctx.IsSysadm(ctx) {
+		return true, nil
+	}
+	roles, err := a.apihubClient.GetAvailableRoles(ctx, packageId)
+	if err != nil {
+		return false, err
+	}
+	if roles == nil {
+		return false, nil
+	}
+	for _, role := range roles.Roles {
+		for _, perm := range role.Permissions {
+			if perm == view.ReadPermission {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (a authorizationServiceImpl) HasPublishPackagePermission(ctx context.Context, packageId string) (bool, error) {
-	//TODO implement me
-	return true, nil
+	if secctx.IsSysadm(ctx) {
+		return true, nil
+	}
+	roles, err := a.apihubClient.GetAvailableRoles(ctx, packageId)
+	if err != nil {
+		return false, err
+	}
+	for _, role := range roles.Roles {
+		for _, perm := range role.Permissions {
+			if perm == view.ManageDraftVersionPermission {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }

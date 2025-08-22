@@ -237,6 +237,7 @@ func (c rulesetControllerImpl) GetRuleset(w http.ResponseWriter, r *http.Request
 			Message: exception.EntityNotFoundMsg,
 			Params:  map[string]interface{}{"entity": "ruleset", "id": rulesetId},
 		})
+		return
 	}
 	respondWithJson(w, http.StatusOK, result)
 }
@@ -282,6 +283,7 @@ func (c rulesetControllerImpl) GetRulesetData(w http.ResponseWriter, r *http.Req
 			Message: exception.EntityNotFoundMsg,
 			Params:  map[string]interface{}{"entity": "ruleset", "id": rulesetId},
 		})
+		return
 	}
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", disposition, filename))

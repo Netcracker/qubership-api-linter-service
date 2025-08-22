@@ -31,6 +31,8 @@ type ApihubClient interface {
 	GetUserByPAT(ctx context.Context, token string) (*view.User, error)
 	GetPatByPAT(ctx context.Context, token string) (*view.PersonalAccessTokenExtAuthView, error)
 
+	GetAvailableRoles(ctx context.Context, packageId string) (*view.PackageRoles, error)
+
 	/*GetPackageByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (*view.SimplePackage, error)
 	GetPackageIdByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (string, string, error)
 	GetPackageById(ctx secctx.SecurityContext, id string) (*view.SimplePackage, error)
@@ -305,6 +307,26 @@ func (a apihubClientImpl) GetPatByPAT(ctx context.Context, token string) (*view.
 	}
 
 	return &pat, nil
+}
+
+func (a apihubClientImpl) GetAvailableRoles(ctx context.Context, packageId string) (*view.PackageRoles, error) {
+	req := a.makeRequest(ctx)
+
+	resp, err := req.Get(fmt.Sprintf("%s/api/v2/packages/%s/availableRoles", a.apihubUrl, packageId))
+	if err != nil || resp.StatusCode() != http.StatusOK {
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var roles view.PackageRoles
+	err = json.Unmarshal(resp.Body(), &roles)
+	if err != nil {
+		return nil, err
+	}
+
+	return &roles, nil
 }
 
 /*
