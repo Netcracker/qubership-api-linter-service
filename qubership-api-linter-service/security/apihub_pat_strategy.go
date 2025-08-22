@@ -18,6 +18,7 @@ import (
 	goctx "context"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/client"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"net/http"
 
 	"github.com/shaj13/go-guardian/v2/auth"
@@ -39,19 +40,18 @@ func (a apihubPATStrategyImpl) Authenticate(ctx goctx.Context, r *http.Request) 
 		return nil, fmt.Errorf("authentication failed: '%v' header is empty", PATHeader)
 	}
 
-	user, err := a.apihubClient.GetUserByPAT(ctx, pat)
+	patResp, err := a.apihubClient.GetPatByPAT(ctx, pat)
 	if err != nil {
 		return nil, err
 	}
-	if user == nil {
+	if patResp == nil {
 		return nil, fmt.Errorf("authentication failed: personal access token not found")
 	}
 
 	userExtensions := auth.Extensions{}
-	/*if systemRole != "" {
-		userExtensions.Set(context.SystemRoleExt, systemRole)
-	}*/
-	// TODO: system roles!
+	for _, sysRole := range patResp.SystemRoles {
+		userExtensions.Add(secctx.SystemRoleExt, sysRole)
+	}
 
-	return auth.NewDefaultUser(user.Name, user.Id, []string{}, userExtensions), nil
+	return auth.NewDefaultUser(patResp.User.Name, patResp.User.Id, []string{}, userExtensions), nil
 }

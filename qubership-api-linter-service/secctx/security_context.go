@@ -7,16 +7,13 @@ import (
 	"strings"
 )
 
-type SecurityContext interface {
-	getUserId() string
-	getUserToken() string
-	getApiKey() string
-	IsSystem() bool
-}
+const SystemRoleExt = "systemRole"
 
 func MakeUserContext(r *http.Request) context.Context {
 	user := auth.User(r)
 	userId := user.GetID()
+
+	sysRoles := user.GetExtensions().Values(SystemRoleExt)
 
 	token := getAuthorizationToken(r)
 	apiKey := getApihubApiKey(r)
@@ -28,6 +25,7 @@ func MakeUserContext(r *http.Request) context.Context {
 		apiKey:              apiKey,
 		personalAccessToken: pat,
 		isSystem:            false,
+		systemRoles:         sysRoles,
 	})
 }
 
@@ -40,7 +38,8 @@ type securityContextImpl struct {
 	token               string
 	apiKey              string
 	personalAccessToken string
-	isSystem            bool
+	isSystem            bool     // TODO: bad naming
+	systemRoles         []string // TODO: bad naming
 }
 
 func getAuthorizationToken(r *http.Request) string {
@@ -75,14 +74,25 @@ func getApihubApiKey(r *http.Request) string {
 	return r.Header.Get("api-key")
 }
 
-func (ctx securityContextImpl) IsSystem() bool { return ctx.isSystem }
-
 func IsSystem(ctx context.Context) bool {
 	val := ctx.Value("secCtx")
 	if val == nil {
 		return false
 	}
 	return val.(securityContextImpl).isSystem
+}
+
+func IsSysadm(ctx context.Context) bool {
+	val := ctx.Value("secCtx")
+	if val == nil {
+		return false
+	}
+	for _, role := range val.(securityContextImpl).systemRoles {
+		if role == "System administrator" {
+			return true
+		}
+	}
+	return false
 }
 
 func GetUserId(ctx context.Context) string {

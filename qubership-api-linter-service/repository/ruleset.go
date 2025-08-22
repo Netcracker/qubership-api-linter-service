@@ -70,6 +70,7 @@ func (r ruleSetRepositoryImpl) ActivateRuleset(ctx context.Context, id, oldId st
 		_, err = tx.Model(ruleset).
 			Set("status = ?", view.RulesetStatusActive).
 			Set("can_be_deleted = ?", false).
+			Set("last_activated = ?", time.Now()).
 			Where("id = ?", id).
 			Update()
 		if err != nil {

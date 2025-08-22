@@ -8,18 +8,18 @@ import (
 type Ruleset struct {
 	tableName struct{} `pg:"ruleset"`
 
-	Id     string             `pg:"id,pk,type:varchar"`
-	Name   string             `pg:"name,type:varchar,notnull"`
-	Status view.RulesetStatus `pg:"status,type:varchar,notnull"`
-	//Data         []byte             `pg:"data,type:bytea,notnull"`
-	CreatedAt    time.Time    `pg:"created_at,type:timestamp without time zone,notnull"`
-	CreatedBy    string       `pg:"created_by,type:varchar"`
-	DeletedAt    time.Time    `pg:"deleted_at,type:timestamp without time zone"`
-	DeletedBy    string       `pg:"deleted_by,type:varchar,notnull"`
-	ApiType      view.ApiType `pg:"api_type,type:varchar,notnull"`
-	Linter       view.Linter  `pg:"linter,type:varchar,notnull"`
-	FileName     string       `pg:"file_name,type:varchar"`
-	CanBeDeleted bool         `pg:"can_be_deleted,type:bool"`
+	Id            string             `pg:"id,pk,type:varchar"`
+	Name          string             `pg:"name,type:varchar,notnull"`
+	Status        view.RulesetStatus `pg:"status,type:varchar,notnull"`
+	CreatedAt     time.Time          `pg:"created_at,type:timestamp without time zone,notnull"`
+	CreatedBy     string             `pg:"created_by,type:varchar"`
+	DeletedAt     time.Time          `pg:"deleted_at,type:timestamp without time zone"`
+	DeletedBy     string             `pg:"deleted_by,type:varchar,notnull"`
+	ApiType       view.ApiType       `pg:"api_type,type:varchar,notnull"`
+	Linter        view.Linter        `pg:"linter,type:varchar,notnull"`
+	FileName      string             `pg:"file_name,type:varchar"`
+	CanBeDeleted  bool               `pg:"can_be_deleted,type:bool"`
+	LastActivated *time.Time         `pg:"last_activated,type:timestamp without time zone"`
 }
 
 type RulesetWithData struct {

@@ -29,6 +29,7 @@ type ApihubClient interface {
 
 	CheckAuthToken(ctx context.Context, token string) (bool, error)
 	GetUserByPAT(ctx context.Context, token string) (*view.User, error)
+	GetPatByPAT(ctx context.Context, token string) (*view.PersonalAccessTokenExtAuthView, error)
 
 	/*GetPackageByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (*view.SimplePackage, error)
 	GetPackageIdByServiceName(ctx secctx.SecurityContext, workspaceId string, serviceName string) (string, string, error)
@@ -278,6 +279,32 @@ func (a apihubClientImpl) GetUserByPAT(ctx context.Context, token string) (*view
 	}
 
 	return &user, nil
+}
+
+func (a apihubClientImpl) GetPatByPAT(ctx context.Context, token string) (*view.PersonalAccessTokenExtAuthView, error) {
+	tr := http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	cl := http.Client{Transport: &tr, Timeout: time.Second * 60}
+
+	client := resty.NewWithClient(&cl)
+	req := client.R()
+	req.SetContext(ctx)
+	req.SetHeader("X-Personal-Access-Token", token)
+
+	resp, err := req.Get(fmt.Sprintf("%s/api/v2/auth/pat", a.apihubUrl))
+	if err != nil || resp.StatusCode() != http.StatusOK {
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var pat view.PersonalAccessTokenExtAuthView
+	err = json.Unmarshal(resp.Body(), &pat)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pat, nil
 }
 
 /*

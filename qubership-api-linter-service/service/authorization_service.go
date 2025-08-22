@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"github.com/Netcracker/qubership-api-linter-service/client"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
 )
 
 type AuthorizationService interface {
@@ -26,8 +27,7 @@ func (a authorizationServiceImpl) HasRulesetReadPermission(ctx context.Context) 
 }
 
 func (a authorizationServiceImpl) HasRulesetManagementPermission(ctx context.Context) (bool, error) {
-	// TODO: sysadmin rights required
-	return true, nil
+	return secctx.IsSysadm(ctx), nil
 }
 
 func (a authorizationServiceImpl) HasReadPackagePermission(ctx context.Context, packageId string) (bool, error) {

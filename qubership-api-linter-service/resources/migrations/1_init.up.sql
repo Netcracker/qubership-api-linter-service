@@ -40,7 +40,8 @@ create table ruleset
     api_type       varchar                     not null,
     linter         varchar                     not null,
     file_name      varchar                     not null,
-    can_be_deleted bool                        NOT NULL,
+    can_be_deleted bool                        not null,
+    last_activated timestamp without time zone,
     constraint ruleset_name_unique unique (name)
 );
 

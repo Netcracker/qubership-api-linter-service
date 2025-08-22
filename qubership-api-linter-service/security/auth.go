@@ -7,9 +7,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
 
-	"github.com/shaj13/go-guardian/v2/auth"
 	"github.com/shaj13/go-guardian/v2/auth/strategies/jwt"
-	"github.com/shaj13/go-guardian/v2/auth/strategies/token"
 	"github.com/shaj13/go-guardian/v2/auth/strategies/union"
 	"github.com/shaj13/libcache"
 	_ "github.com/shaj13/libcache/fifo"
@@ -19,9 +17,6 @@ import (
 )
 
 var strategy union.Union
-var customJwtStrategy auth.Strategy
-
-const CustomJwtAuthHeader = "X-Apihub-Authorization"
 
 func SetupGoGuardian(apihubClient client.ApihubClient) error {
 	if apihubClient == nil {
@@ -55,12 +50,11 @@ func SetupGoGuardian(apihubClient client.ApihubClient) error {
 		cache.Delete(key)
 	})
 
-	jwtStrategy := jwt.New(cache, keeper)
+	jwtStrategy := jwt.New(cache, keeper) // TODO: replace with custom strategy to support logout
 	apihubApiKeyStrategy := NewApihubApiKeyStrategy(apihubClient)
 	cookieTokenStrategy := NewCookieTokenStrategy(apihubClient)
 	patStrategy := NewApihubPATStrategy(apihubClient)
 	strategy = union.New(jwtStrategy, apihubApiKeyStrategy, cookieTokenStrategy, patStrategy)
 
-	customJwtStrategy = jwt.New(cache, keeper, token.SetParser(token.XHeaderParser(CustomJwtAuthHeader)))
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/client"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"net/http"
 
 	"github.com/shaj13/go-guardian/v2/auth"
@@ -30,5 +31,10 @@ func (a apihubApiKeyStrategyImpl) Authenticate(ctx context.Context, r *http.Requ
 	if apiKey == nil || apiKey.Revoked {
 		return nil, fmt.Errorf("authentication failed: %v is not valid", "api-key")
 	}
-	return auth.NewDefaultUser(apiKey.Name, apiKey.Id, []string{}, auth.Extensions{}), nil
+	userExtensions := auth.Extensions{}
+	for _, sysRole := range apiKey.Roles {
+		userExtensions.Add(secctx.SystemRoleExt, sysRole)
+	}
+
+	return auth.NewDefaultUser(apiKey.Name, apiKey.Id, []string{}, userExtensions), nil
 }
