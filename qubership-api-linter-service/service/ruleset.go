@@ -10,6 +10,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -97,16 +98,51 @@ func (r rulesetServiceImpl) ListRulesets(ctx context.Context) ([]view.Ruleset, e
 		return nil, err
 	}
 
-	result := make([]view.Ruleset, 0)
-
-	// TODO: need to sort the rulesets properly!
 	/*
 	   The sorting follows a strict order:
 	     1. The currently active ruleset (always appears first).
 	     2. Rulesets that have never been activated (in order of creation).
 	     3. All other rulesets, sorted by the latest activation date (most recent first).
 	*/
+	sort.Slice(ents, func(i, j int) bool {
+		a, b := ents[i], ents[j]
 
+		if a.Status == b.Status {
+			if a.Status == view.RulesetStatusActive {
+				return a.CreatedAt.Before(b.CreatedAt)
+			}
+
+		} else {
+			if a.Status == view.RulesetStatusActive {
+				return true
+			}
+
+		}
+
+		// 1. Active ruleset comes first
+		if a.Status == view.RulesetStatusActive && !(b.Status == view.RulesetStatusActive) {
+			return true
+		}
+		if !(a.Status == view.RulesetStatusActive) && b.Status == view.RulesetStatusActive {
+			return false
+		}
+		// both active or inactive
+		// 2. Never-activated rulesets come next (sorted by CreatedAt ascending)
+		if a.LastActivated == nil && b.LastActivated == nil {
+			return a.CreatedAt.Before(b.CreatedAt)
+		}
+		if a.LastActivated == nil {
+			return true
+		}
+		if b.LastActivated == nil {
+			return false
+		}
+
+		// 3. Others sorted by last activation (descending, most recent first)
+		return a.LastActivated.After(*b.LastActivated)
+	})
+
+	result := make([]view.Ruleset, 0)
 	for _, ent := range ents {
 		result = append(result, entity.MakeRulesetView(ent))
 	}

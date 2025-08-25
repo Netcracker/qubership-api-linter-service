@@ -71,7 +71,9 @@ func (r *versionLintTaskRepositoryImpl) GetWaitingForDocTasks(ctx context.Contex
 	var result []entity.VersionLintTask
 	err := r.cp.GetConnection().ModelContext(ctx, &result).
 		Where("status = ?", view.TaskStatusWaitingForDocs).
-		Where("executor_id = ?", executorId).
+		//Where("executor_id = ?", executorId). // FIXME: problem here: the tasks couldn't be complete after executor restart
+		// TODO: limit here?
+		// TODO: order here?
 		Select()
 	if err != nil {
 		if errors.Is(err, pg.ErrNoRows) {

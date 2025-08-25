@@ -8,14 +8,14 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/go-pg/pg/v10"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
 type DocLintTaskRepository interface {
-	SetDocTaskStatus(ctx context.Context, docTaskId string, status view.TaskStatus, details string) error
+	SetDocTaskStatus(ctx context.Context, docTaskId string, status view.TaskStatus, details string, executorId string) error
 	SaveDocTasksAndUpdVer(ctx context.Context, ents []entity.DocumentLintTask, versionTaskId string) error
 	FindFreeDocTask(ctx context.Context, executorId string) (*entity.DocumentLintTask, error)
-	//CheckDocTasksFinished(ctx context.Context, verTaskIds []string) ([]string, error)
 	GetDocTasksForVersionTasks(ctx context.Context, verTaskIds []string) ([]entity.DocumentLintTask, error)
 }
 
@@ -27,18 +27,36 @@ type docLintTaskRepositoryImpl struct {
 	cp db.ConnectionProvider
 }
 
-func (d docLintTaskRepositoryImpl) SetDocTaskStatus(ctx context.Context, docTaskId string, status view.TaskStatus, details string) error {
-	var verEnt entity.VersionLintTask
+func (d docLintTaskRepositoryImpl) SetDocTaskStatus(ctx context.Context, docTaskId string, status view.TaskStatus, details string, executorId string) error {
+	err := d.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
+		var docEnt entity.DocumentLintTask
+		err := d.cp.GetConnection().WithContext(ctx).Model(&docEnt).Where("id=?", docTaskId).Select()
+		if err != nil {
+			return err
+		}
 
-	_, err := d.cp.GetConnection().WithContext(ctx).Model(&verEnt).
-		Set("status=?", status).
-		Set("details=?", details).
-		Set("last_active=?", time.Now()).
-		Where("id=?", docTaskId).Update()
-	if err != nil {
-		return err
-	}
-	return nil
+		if docEnt.Status == view.TaskStatusComplete || docEnt.Status == view.TaskStatusError {
+			log.Debugf("Doc lint task %s is already finished, skipping set status = %s and details = %s", docTaskId, status, details)
+			return nil
+		}
+		if docEnt.ExecutorId != executorId {
+			return fmt.Errorf("SetDocTaskStatus: executor in DB is set to %s, but current one is %s", docEnt.ExecutorId, executorId)
+		}
+
+		_, err = tx.Model(&docEnt).
+			Set("status=?", status).
+			Set("details=?", details).
+			Set("last_active=?", time.Now()).
+			Where("id=?", docTaskId).
+			Where("executor_id = ?", executorId).
+			Update()
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	return err
 }
 
 func (d docLintTaskRepositoryImpl) SaveDocTasksAndUpdVer(ctx context.Context, ents []entity.DocumentLintTask, versionTaskId string) error {

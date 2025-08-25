@@ -117,6 +117,7 @@ func main() {
 	log.Info("go_guardian is set up")
 
 	executorId := uuid.NewString()
+	log.Infof("executorId = %s", executorId)
 
 	versionLintTaskRepository := repository.NewVersionLintTaskRepository(cp)
 	docLintTaskRepository := repository.NewDocLintTaskRepository(cp)

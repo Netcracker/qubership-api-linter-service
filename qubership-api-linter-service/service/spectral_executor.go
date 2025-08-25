@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
+	"github.com/Netcracker/qubership-api-linter-service/view"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -94,4 +95,27 @@ func detectSpectralVersion(spectralBinPath string) (string, error) {
 	spectralVersion = out.String()
 	spectralVersion = strings.TrimSpace(spectralVersion)
 	return spectralVersion, nil
+}
+
+func calculateSpectralSummary(report []interface{}) view.SpectralResultSummary {
+	summary := view.SpectralResultSummary{}
+	for _, resultObj := range report {
+		if result, ok := resultObj.(map[string]interface{}); ok {
+			if severity, exists := result["severity"]; exists {
+				if severityInt, ok := severity.(float64); ok {
+					switch severityInt {
+					case 0:
+						summary.ErrorCount += 1
+					case 1:
+						summary.WarningCount += 1
+					case 2:
+						summary.InfoCount += 1
+					case 3:
+						summary.HintCount += 1
+					}
+				}
+			}
+		}
+	}
+	return summary
 }

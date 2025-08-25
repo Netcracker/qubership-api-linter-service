@@ -11,6 +11,8 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -70,13 +72,17 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 		return
 	}
 
-	// TODO: update last_active for version task periodically in goroutine!!!!!!!!!
+	// TODO: update last_active for version task periodically in goroutine?
 
 	version := fmt.Sprintf("%s@%d", task.Version, task.Revision)
 
 	docs, err := v.cl.GetVersionDocuments(ctx, task.PackageId, version)
 	if err != nil {
 		v.handleProcessingFailed(ctx, *task, fmt.Errorf("failed to get version documents: %s", err))
+		return
+	}
+	if docs == nil {
+		v.handleProcessingFailed(ctx, *task, fmt.Errorf("failed to get version documents: not found"))
 		return
 	}
 
@@ -170,24 +176,48 @@ func supportedApiType(at view.ApiType) bool {
 
 func (v versionTaskProcessorImpl) acquireFreeTasks() {
 	t := time.NewTicker(time.Second * 5)
-	ctx := context.Background()
+
+	running := atomic.Bool{}
 	for range t.C {
-		task, err := v.verRepo.FindFreeVersionTask(ctx, v.executorId)
-		if err != nil {
-			log.Errorf("Failed to find free version task: %s", err)
+		if running.Load() {
+			log.Tracef("versionTaskProcessorImpl: ticker skipped, running")
 			continue
 		}
-		if task != nil {
-			v.processVersionLintTask(task.Id)
-		}
+
+		utils.SafeAsync(func() {
+			running.Store(true)
+			for {
+				moreWork := v.processTask()
+				if moreWork == false {
+					break
+				}
+				log.Tracef("versionTaskProcessorImpl: keep on running")
+			}
+			running.Store(false)
+		})
 	}
+}
+
+func (v versionTaskProcessorImpl) processTask() bool {
+	ctx := context.Background()
+	task, err := v.verRepo.FindFreeVersionTask(ctx, v.executorId)
+	if err != nil {
+		log.Errorf("Failed to find free version task: %s", err)
+		return false
+	}
+	if task != nil {
+		v.processVersionLintTask(task.Id)
+		v.writeAsyncTestLog(task.Id)
+		return true
+	}
+	return false
 }
 
 func (v versionTaskProcessorImpl) checkDocReady() {
 	t := time.NewTicker(time.Second * 5)
 	ctx := context.Background()
 	for range t.C {
-		verLintTasks, err := v.verRepo.GetWaitingForDocTasks(ctx, v.executorId)
+		verLintTasks, err := v.verRepo.GetWaitingForDocTasks(ctx, v.executorId) // FIXME: problem with dead executor here!!
 		if err != nil {
 			log.Errorf("Failed to get version tasks in waiting for docs status: %s", err)
 			continue
@@ -223,7 +253,7 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 				case view.TaskStatusError:
 					numFailed++
 					break
-				case view.TaskStatusNotStarted, view.TaskStatusLinting, view.TaskStatusProcessing:
+				case view.TaskStatusNotStarted, view.TaskStatusProcessing:
 					numNotReady++
 					break
 				default:
@@ -283,6 +313,28 @@ func (v versionTaskProcessorImpl) handleProcessingFailed(ctx context.Context, ve
 		if updErr != nil {
 			log.Errorf("Failed to increment version lint task %s restart count : %v", verLintTask.Id, updErr)
 		}
+		return
+	}
+}
+
+// TODO: temp! just for testing!
+func (v versionTaskProcessorImpl) writeAsyncTestLog(taskId string) {
+	enabled := os.Getenv("TASK_LOG")
+	if enabled == "" {
+		return
+	}
+	fileName := "ver_task_log_" + v.executorId + ".txt"
+
+	// Open the file in append mode, create it if it doesn't exist, with write-only permissions
+	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Errorf("failed to open test log entry file %s", fileName)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(taskId + "\n"); err != nil {
+		log.Errorf("failed to write test log entry to file %s", fileName)
 		return
 	}
 }

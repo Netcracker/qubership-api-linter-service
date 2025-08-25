@@ -53,7 +53,17 @@ func (v *validationControllerImpl) ValidateVersion(w http.ResponseWriter, r *htt
 		return
 	}
 
-	version := getStringParam(r, "version")
+	version, err := getUnescapedStringParam(r, "version")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "version"},
+			Debug:   err.Error(),
+		})
+		return
+	}
 
 	taskId, err := v.validationService.ValidateVersion(ctx, packageId, version, "")
 	if err != nil {

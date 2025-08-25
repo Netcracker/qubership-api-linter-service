@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,7 +45,6 @@ type docTaskProcessorImpl struct {
 }
 
 // TODO: maybe need some fast track
-
 // TODO: read from ticker chan or from events chan
 
 func (d docTaskProcessorImpl) Start() {
@@ -52,23 +52,47 @@ func (d docTaskProcessorImpl) Start() {
 
 	utils.SafeAsync(func() {
 		ticker := time.NewTicker(time.Second * 5)
-		for range ticker.C {
 
-			task, err := d.docTaskRepo.FindFreeDocTask(context.Background(), d.executorId)
-			if err != nil {
-				log.Errorf("Error finding free doc task: %s", err)
+		running := atomic.Bool{}
+
+		for range ticker.C {
+			if running.Load() {
+				log.Tracef("docTaskProcessorImpl: ticker skipped, running")
 				continue
 			}
-			if task != nil {
-				d.processDocTask(secctx.MakeSysadminContext(context.Background()), *task)
-			}
+
+			utils.SafeAsync(func() {
+				running.Store(true)
+				for {
+					moreWork := d.processTask()
+					if moreWork == false {
+						break
+					}
+					log.Tracef("docTaskProcessorImpl: keep on running")
+				}
+				running.Store(false)
+			})
 		}
 	})
 }
 
+func (d docTaskProcessorImpl) processTask() bool {
+	task, err := d.docTaskRepo.FindFreeDocTask(context.Background(), d.executorId)
+	if err != nil {
+		log.Errorf("Error finding free doc task: %s", err)
+		return false
+	}
+	if task != nil {
+		d.processDocTask(secctx.MakeSysadminContext(context.Background()), *task)
+		d.writeAsyncTestLog(task.Id)
+		return true
+	}
+	return false
+}
+
 func (d docTaskProcessorImpl) handleError(ctx context.Context, docTaskId string, err error) {
 	log.Infof("Doc task %s failed with error: %s", docTaskId, err)
-	setErr := d.docTaskRepo.SetDocTaskStatus(ctx, docTaskId, view.TaskStatusError, err.Error())
+	setErr := d.docTaskRepo.SetDocTaskStatus(ctx, docTaskId, view.TaskStatusError, err.Error(), d.executorId)
 	if setErr != nil {
 		log.Errorf("Error updating status of doc task %s: %s", docTaskId, err)
 	}
@@ -78,7 +102,34 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	// TODO : hash could be in DocumentLintTask, it will allow to avoid downloading the doc and further processing
 	// TODO: shortcut here
 
-	// TODO: periodically update last_active in goroutine
+	runningC := make(chan struct{})
+	defer func() {
+		close(runningC)
+	}()
+
+	// Update last_active during long run
+	utils.SafeAsync(func() {
+		t := time.NewTicker(time.Second * 5)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			break
+		case _, ok := <-t.C:
+			if !ok {
+				t.Stop()
+				break
+			}
+			err := d.docTaskRepo.SetDocTaskStatus(ctx, task.Id, view.TaskStatusProcessing, "", d.executorId)
+			if err != nil {
+				log.Errorf("Error updating status of doc task %s: %s", task.Id, err)
+			}
+		case _, ok := <-runningC:
+			if !ok {
+				t.Stop()
+				break
+			}
+		}
+	})
 
 	// TODO: get document metadata??
 
@@ -145,7 +196,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			return
 		}
 
-		log.Infof("Processing time = %+vms", calcTime)
+		log.Infof("Doc task id = %s, Processing time = %+vms", task.Id, calcTime)
 
 		summary := calculateSpectralSummary(report)
 
@@ -194,13 +245,35 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			Summary:       sumAsMap,
 		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, calcTime, verEnt, docEnt, &lintFileResult)
+		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, calcTime, verEnt, docEnt, &lintFileResult, d.executorId)
 		if err != nil {
 			d.handleError(ctx, task.Id, fmt.Errorf("failed to save lint result with error: %s", err))
 			return
 		}
 	} else {
 		d.handleError(ctx, task.Id, fmt.Errorf("selected linter %s is not supported", task.Linter))
+		return
+	}
+}
+
+// TODO: temp! just for testing!
+func (d docTaskProcessorImpl) writeAsyncTestLog(taskId string) {
+	enabled := os.Getenv("TASK_LOG")
+	if enabled == "" {
+		return
+	}
+	fileName := "doc_task_log_" + d.executorId + ".txt"
+
+	// Open the file in append mode, create it if it doesn't exist, with write-only permissions
+	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Errorf("failed to open test log entry file %s", fileName)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(taskId + "\n"); err != nil {
+		log.Errorf("failed to write test log entry to file %s", fileName)
 		return
 	}
 }

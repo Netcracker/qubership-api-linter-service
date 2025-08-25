@@ -326,18 +326,12 @@ func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId st
 		Details:      "",
 		CreatedAt:    time.Now(),
 		CreatedBy:    userId,
-		ExecutorId:   v.executorId, // reserve the task for current instance to start processing immediately
 		LastActive:   time.Now(),
 		EventId:      eventId, // optional
 		RestartCount: 0,
 		Priority:     0,
 	}
 	err = v.verTaskRepo.SaveVersionTask(context.Background(), ent)
-	if err != nil {
-		return "", err
-	}
-
-	err = v.versionTaskProcessor.StartVersionLintTask(ent.Id)
 	if err != nil {
 		return "", err
 	}

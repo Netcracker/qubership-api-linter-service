@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/db"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/view"
@@ -10,7 +11,7 @@ import (
 
 type DocResultRepository interface {
 	LintResultExists(ctx context.Context, dataHash string) (bool, error)
-	SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult) error
+	SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error
 }
 
 func NewDocResultRepository(cp db.ConnectionProvider) DocResultRepository {
@@ -26,9 +27,31 @@ func (d docResultRepositoryImpl) LintResultExists(ctx context.Context, dataHash 
 	panic("implement me")
 }
 
-func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult) error {
+func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error {
 	return d.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
-		_, err := tx.Model(&version).OnConflict("(package_id, version, revision) do update").
+
+		var docLintTask *entity.DocumentLintTask
+		res, err := tx.Model(docLintTask).
+			Set("status = ?", view.TaskStatusComplete).
+			Set("last_active = now()").
+			Set("lint_time_ms = ?", lintTimeMs).
+			Where("id = ?", docLintTaskId).
+			Where("executor_id = ?", executorId).
+			Update()
+		if err != nil {
+			return err
+		}
+		if res.RowsAffected() == 0 {
+			var docEnt entity.DocumentLintTask
+			err = d.cp.GetConnection().WithContext(ctx).Model(&docEnt).Where("id=?", docLintTaskId).Select()
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("SaveLintResult: executor in DB is set to %s, but current one is %s", docEnt.ExecutorId, executorId)
+		}
+
+		_, err = tx.Model(&version).OnConflict("(package_id, version, revision) do update").
 			Set("lint_status = EXCLUDED.lint_status").
 			Set("lint_details = EXCLUDED.lint_details").
 			Set("linted_at = EXCLUDED.linted_at").
@@ -56,16 +79,6 @@ func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTask
 			if err != nil {
 				return err
 			}
-		}
-		var docLintTask *entity.DocumentLintTask
-		_, err = tx.Model(docLintTask).
-			Set("status = ?", view.TaskStatusComplete).
-			Set("last_active = now()").
-			Set("lint_time_ms = ?", lintTimeMs).
-			Where("id = ?", docLintTaskId).
-			Update()
-		if err != nil {
-			return err
 		}
 		return nil
 	})
