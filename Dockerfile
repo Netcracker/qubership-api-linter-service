@@ -31,8 +31,6 @@ RUN set GOSUMDB=off && set CGO_ENABLED=0 && go mod tidy && go mod download && GO
 
 FROM docker.io/golang:1.23.4-alpine3.21
 
-MAINTAINER qubership.org
-
 USER root
 
 RUN apk --no-cache add curl
@@ -46,4 +44,4 @@ RUN chmod -R a+rwx /app
 
 USER 10001
 
-ENTRYPOINT ./qubership-api-linter-service
+ENTRYPOINT ["./qubership-api-linter-service"]

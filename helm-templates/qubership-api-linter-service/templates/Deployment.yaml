@@ -28,9 +28,17 @@ spec:
                 app.kubernetes.io/managed-by: 'helm'
                 app.kubernetes.io/technology: 'go'
         spec:
+            hostPID: false
+            hostIPC: false
+            volumes:
+            -   name: tmp-volume
+                emptyDir: {}
             containers:
             -   name: 'qubership-api-linter-service'
                 image: '{{ .Values.qubershipApiLinterService.image.repository }}:{{ .Values.qubershipApiLinterService.image.tag }}'
+                volumeMounts:
+                -   name: tmp-volume
+                    mountPath: /tmp
                 ports:
                 -   name: web
                     containerPort: 8080
@@ -62,7 +70,7 @@ spec:
                 securityContext:
                     runAsUser: 10001
                     runAsGroup: 10001
-                    readOnlyRootFilesystem: false
+                    readOnlyRootFilesystem: true
                     runAsNonRoot: true
                     seccompProfile:
                         type: RuntimeDefault
