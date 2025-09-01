@@ -41,6 +41,8 @@ type olricProviderImpl struct {
 	olricC *olric.Olric
 }
 
+const olricBindAddr = "0.0.0.0"
+
 func NewOlricProvider(discoveryMode string, replicaCount int, namespace string, apihubUrl string) (OlricProvider, error) {
 	prov := &olricProviderImpl{wg: sync.WaitGroup{}}
 
@@ -94,7 +96,7 @@ func getConfig(discoveryMode string, replicaCount int, namespace string, apihubU
 		cfg.LogLevel = "WARN"
 		cfg.LogVerbosity = 2
 
-		namespace, err := getNamespace(namespace)
+		ns, err := getNamespace(namespace)
 		if err != nil {
 			return nil, err
 		}
@@ -104,17 +106,17 @@ func getConfig(discoveryMode string, replicaCount int, namespace string, apihubU
 		cfg.ServiceDiscovery = map[string]interface{}{
 			"plugin":   cloudDiscovery,
 			"provider": "k8s",
-			"args":     fmt.Sprintf("namespace=%s label_selector=\"%s\"", namespace, labelSelector),
+			"args":     fmt.Sprintf("namespace=%s label_selector=\"%s\"", ns, labelSelector),
 		}
 
 		// TODO: try to get from replica set via kube client
-		replicaCount := getReplicaCount(replicaCount)
-		log.Infof("replicaCount is set to %d", replicaCount)
+		rc := getReplicaCount(replicaCount)
+		log.Infof("replicaCount is set to %d", rc)
 
-		cfg.PartitionCount = uint64(replicaCount * 4)
-		cfg.ReplicaCount = replicaCount
+		cfg.PartitionCount = uint64(rc * 4)
+		cfg.ReplicaCount = rc
 
-		cfg.MemberCountQuorum = int32(replicaCount)
+		cfg.MemberCountQuorum = int32(rc)
 		cfg.BootstrapTimeout = 60 * time.Second
 		cfg.MaxJoinAttempts = 60
 
@@ -126,9 +128,9 @@ func getConfig(discoveryMode string, replicaCount int, namespace string, apihubU
 		cfg.LogLevel = "WARN"
 		cfg.LogVerbosity = 2
 
-		cfg.BindAddr = "localhost"
+		cfg.BindAddr = olricBindAddr
 		cfg.BindPort = getRandomFreePort()
-		cfg.MemberlistConfig.BindAddr = "localhost"
+		cfg.MemberlistConfig.BindAddr = olricBindAddr
 		cfg.MemberlistConfig.BindPort = getRandomFreePort()
 		cfg.PartitionCount = 5
 
@@ -153,7 +155,7 @@ func getConfig(discoveryMode string, replicaCount int, namespace string, apihubU
 func getRandomFreePort() int {
 	for {
 		port := rand.Intn(48127) + 1024
-		if isPortFree("localhost", port) {
+		if isPortFree(olricBindAddr, port) {
 			return port
 		}
 	}
