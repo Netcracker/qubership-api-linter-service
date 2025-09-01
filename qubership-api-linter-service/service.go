@@ -102,7 +102,11 @@ func main() {
 	log.Infof("Migration step passed, continue initialization")
 	////
 
-	olricProvider, err := client.NewOlricProvider()
+	olricProvider, err := client.NewOlricProvider(
+		systemInfoService.GetOlricDiscoveryMode(),
+		systemInfoService.GetReplicaCount(),
+		systemInfoService.GetNamespace(),
+		systemInfoService.GetAPIHubUrl())
 	if err != nil {
 		log.Error("Failed to create olricProvider: " + err.Error())
 		panic("Failed to create olricProvider: " + err.Error())
@@ -161,7 +165,7 @@ func main() {
 	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", security.Secure(rulesetController.ActivateRuleset)).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/rulesets", security.Secure(rulesetController.ListRulesets)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", security.Secure(rulesetController.GetRuleset)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/data", security.Secure(rulesetController.GetRulesetData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/data", security.NoSecure(rulesetController.GetRulesetData)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", security.Secure(rulesetController.GetRulesetActivationHistory)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", security.Secure(rulesetController.DeleteRuleset)).Methods(http.MethodDelete)
 

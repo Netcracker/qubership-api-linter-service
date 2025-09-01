@@ -2,12 +2,15 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -51,19 +54,35 @@ func (s *spectralExecutorImpl) LintLocalDoc(docPath string, rulesetPath string) 
 	args = append(args, "-o.json")
 	args = append(args, resultPath)
 
-	cmd := exec.Command(s.spectralBinPath, args...)
+	limit := time.Minute * 10
+	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(limit))
+
+	cmd := exec.CommandContext(ctx, s.spectralBinPath, args...)
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 
 	start := time.Now()
-	err := cmd.Run()
+	var err error
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	utils.SafeAsync(func() {
+		err = cmd.Run()
+		wg.Done()
+	})
+	wg.Wait()
 
 	// TODO: read out && stderr ???
 
 	calculationTime := time.Since(start)
 	if err != nil {
+		// in case of timeout err is "exit status 1", so need to distinguish context deadline explicitly
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", calculationTime.Milliseconds(), fmt.Errorf("lint time exceeded limit(%v)", limit)
+		}
+
 		//spectral process exits with status 1 if validation contains at least one error...
 		if err.Error() != "exit status 1" {
 			return "", calculationTime.Milliseconds(), fmt.Errorf("failed to get Spectral report: %v", err.Error())

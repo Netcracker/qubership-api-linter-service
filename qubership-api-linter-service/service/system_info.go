@@ -41,6 +41,10 @@ const (
 	LOG_LEVEL      = "LOG_LEVEL"
 
 	SPECTRAL_BIN_PATH = "SPECTRAL_BIN_PATH"
+
+	OLRIC_DISCOVERY_MODE = "OLRIC_DISCOVERY_MODE"
+	OLRIC_REPLICA_COUNT  = "OLRIC_REPLICA_COUNT"
+	NAMESPACE            = "NAMESPACE"
 )
 
 type SystemInfoService interface {
@@ -63,6 +67,10 @@ type SystemInfoService interface {
 	GetLogLevel() string
 
 	GetSpectralBinPath() string
+
+	GetOlricDiscoveryMode() string
+	GetReplicaCount() int
+	GetNamespace() string
 }
 
 func NewSystemInfoService() (SystemInfoService, error) {
@@ -97,6 +105,10 @@ func (s systemInfoServiceImpl) Init() error {
 	s.setOriginAllowed()
 	s.setLogLevel()
 	s.setSpectralBinPath()
+
+	s.setOlricDiscoveryMode()
+	s.setReplicaCount()
+	s.setNamespace()
 
 	return nil
 }
@@ -253,4 +265,37 @@ func (s systemInfoServiceImpl) setSpectralBinPath() {
 
 func (s systemInfoServiceImpl) GetSpectralBinPath() string {
 	return s.systemInfoMap[SPECTRAL_BIN_PATH].(string)
+}
+
+func (s systemInfoServiceImpl) setOlricDiscoveryMode() {
+	s.systemInfoMap[OLRIC_DISCOVERY_MODE] = os.Getenv(OLRIC_DISCOVERY_MODE)
+}
+
+func (s systemInfoServiceImpl) GetOlricDiscoveryMode() string {
+	return s.systemInfoMap[OLRIC_DISCOVERY_MODE].(string)
+}
+
+func (s systemInfoServiceImpl) setReplicaCount() {
+	s.systemInfoMap[OLRIC_REPLICA_COUNT] = os.Getenv(OLRIC_REPLICA_COUNT)
+}
+
+func (s systemInfoServiceImpl) GetReplicaCount() int {
+	replicaCountStr, exists := os.LookupEnv("OLRIC_REPLICA_COUNT")
+	if exists {
+		rc, err := strconv.Atoi(replicaCountStr)
+		if err != nil {
+			log.Errorf("Invalid OLRIC_REPLICA_COUNT env value, expecting int. Replica count set to 1.")
+			return 1
+		}
+		return rc
+	}
+	return 1
+}
+
+func (s systemInfoServiceImpl) setNamespace() {
+	s.systemInfoMap[NAMESPACE] = os.Getenv(NAMESPACE)
+}
+
+func (s systemInfoServiceImpl) GetNamespace() string {
+	return s.systemInfoMap[NAMESPACE].(string)
 }

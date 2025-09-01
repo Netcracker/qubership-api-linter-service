@@ -180,7 +180,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		resultPath, calcTime, err := d.spectralExecutor.LintLocalDoc(filePath, rulesetPath)
 		if err != nil {
 			d.handleError(ctx, task.Id, fmt.Errorf("error linting doc with spectral: %s", err))
-			// TODO: error to do linted_document
+			// TODO: error to do linted_document?
 			return
 		}
 

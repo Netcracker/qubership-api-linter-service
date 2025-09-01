@@ -41,3 +41,22 @@ func Secure(next http.HandlerFunc) http.HandlerFunc {
 		next.ServeHTTP(w, r)
 	}
 }
+
+func NoSecure(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Errorf("Request failed with panic: %v", err)
+				log.Tracef("Stacktrace: %v", string(debug.Stack()))
+				debug.PrintStack()
+				controller.RespondWithCustomError(w, &exception.CustomError{
+					Status:  http.StatusInternalServerError,
+					Message: http.StatusText(http.StatusInternalServerError),
+					Debug:   fmt.Sprintf("%v", err),
+				})
+				return
+			}
+		}()
+		next.ServeHTTP(w, r)
+	}
+}

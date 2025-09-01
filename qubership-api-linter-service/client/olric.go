@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"os"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -41,12 +41,12 @@ type olricProviderImpl struct {
 	olricC *olric.Olric
 }
 
-func NewOlricProvider() (OlricProvider, error) {
+func NewOlricProvider(discoveryMode string, replicaCount int, namespace string, apihubUrl string) (OlricProvider, error) {
 	prov := &olricProviderImpl{wg: sync.WaitGroup{}}
 
 	var err error
 	gob.Register(map[string]interface{}{})
-	prov.cfg, err = getConfig()
+	prov.cfg, err = getConfig(discoveryMode, replicaCount, namespace, apihubUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +84,8 @@ func (op *olricProviderImpl) GetBindAddr() string {
 	return op.cfg.BindAddr
 }
 
-func getConfig() (*config.Config, error) {
-	mode := getMode()
+func getConfig(discoveryMode string, replicaCount int, namespace string, apihubUrl string) (*config.Config, error) {
+	mode := getMode(discoveryMode)
 	switch mode {
 	case "lan":
 		log.Info("Olric run in cloud mode")
@@ -94,13 +94,13 @@ func getConfig() (*config.Config, error) {
 		cfg.LogLevel = "WARN"
 		cfg.LogVerbosity = 2
 
-		namespace, err := getNamespace()
+		namespace, err := getNamespace(namespace)
 		if err != nil {
 			return nil, err
 		}
 
 		cloudDiscovery := &discovery.CloudDiscovery{}
-		labelSelector := fmt.Sprintf("name=%s", getServiceName())
+		labelSelector := fmt.Sprintf("name=%s", getServiceName()) // TODO: will not work for
 		cfg.ServiceDiscovery = map[string]interface{}{
 			"plugin":   cloudDiscovery,
 			"provider": "k8s",
@@ -108,7 +108,7 @@ func getConfig() (*config.Config, error) {
 		}
 
 		// TODO: try to get from replica set via kube client
-		replicaCount := getReplicaCount()
+		replicaCount := getReplicaCount(replicaCount)
 		log.Infof("replicaCount is set to %d", replicaCount)
 
 		cfg.PartitionCount = uint64(replicaCount * 4)
@@ -132,9 +132,15 @@ func getConfig() (*config.Config, error) {
 		cfg.MemberlistConfig.BindPort = getRandomFreePort()
 		cfg.PartitionCount = 5
 
-		if !isPortFree("localhost", 47376) {
-			// Apihub local port
-			cfg.Peers = []string{"localhost:47376"} // FIXME!!! const!!!!
+		aUrl, err := url.Parse(apihubUrl)
+		if err != nil {
+			return nil, fmt.Errorf("olric node cannot be started, apihub URL is not correct: %s", err.Error())
+		}
+
+		if !isPortFree(aUrl.Hostname(), 47376) {
+			// Apihub's olric node is listening, add Apihub peer
+			peer := fmt.Sprintf("%s:%d", aUrl.Hostname(), 47376)
+			cfg.Peers = []string{peer}
 		}
 
 		return cfg, nil
@@ -164,37 +170,28 @@ func isPortFree(address string, port int) bool {
 	return true
 }
 
-// TODO: replace with system config
-func getMode() string {
-	olricCacheMode, exists := os.LookupEnv("OLRIC_DISCOVERY_MODE")
-	if exists {
-		return olricCacheMode
+func getMode(discoveryMode string) string {
+	if discoveryMode != "" {
+		return discoveryMode
 	}
-
 	return "local"
 }
 
-func getReplicaCount() int {
-	replicaCountStr, exists := os.LookupEnv("OLRIC_REPLICA_COUNT")
-	if exists {
-		rc, err := strconv.Atoi(replicaCountStr)
-		if err != nil {
-			log.Errorf("Invalid OLRIC_REPLICA_COUNT env value, expecting int. Replica count set to 1.")
-			return 1
-		}
-		return rc
+func getReplicaCount(replicaCount int) int {
+	if replicaCount == 0 {
+		return 1
 	}
-	return 1
+	return replicaCount
 }
 
-func getNamespace() (string, error) {
-	ns, exists := os.LookupEnv("NAMESPACE")
-	if !exists {
+func getNamespace(namespace string) (string, error) {
+	if namespace == "" {
 		return "", fmt.Errorf("NAMESPACE env is not set")
 	}
-	return ns, nil
+
+	return namespace, nil
 }
 
 func getServiceName() string {
-	return "apihub-backend"
+	return "apihub-backend" // TODO: temp, replace with olric-related custom k8s label
 }
