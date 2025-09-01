@@ -102,11 +102,10 @@ func getConfig(discoveryMode string, replicaCount int, namespace string, apihubU
 		}
 
 		cloudDiscovery := &discovery.CloudDiscovery{}
-		labelSelector := fmt.Sprintf("name=%s", getServiceName()) // TODO: will not work for
 		cfg.ServiceDiscovery = map[string]interface{}{
 			"plugin":   cloudDiscovery,
 			"provider": "k8s",
-			"args":     fmt.Sprintf("namespace=%s label_selector=\"%s\"", ns, labelSelector),
+			"args":     fmt.Sprintf("namespace=%s label_selector=\"%s\"", ns, "olric-cluster=apihub"), // select pods with label "olric-cluster=apihub"
 		}
 
 		// TODO: try to get from replica set via kube client
@@ -192,8 +191,4 @@ func getNamespace(namespace string) (string, error) {
 	}
 
 	return namespace, nil
-}
-
-func getServiceName() string {
-	return "apihub-backend" // TODO: temp, replace with olric-related custom k8s label
 }
