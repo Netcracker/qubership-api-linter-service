@@ -231,7 +231,7 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 		return nil, nil
 	}
 
-	var issues []view.ValidationIssue
+	issues := make([]view.ValidationIssue, 0)
 	var spectralOutput []view.SpectralOutputItem
 	err = json.Unmarshal(lintResult.Data, &spectralOutput)
 	if err != nil {

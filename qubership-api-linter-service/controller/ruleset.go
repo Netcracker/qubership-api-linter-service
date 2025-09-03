@@ -244,21 +244,7 @@ func (c rulesetControllerImpl) GetRuleset(w http.ResponseWriter, r *http.Request
 
 func (c rulesetControllerImpl) GetRulesetData(w http.ResponseWriter, r *http.Request) {
 	rulesetId := getStringParam(r, "ruleset_id")
-
-	ctx := secctx.MakeUserContext(r)
-	sufficientPrivileges, err := c.authorizationService.HasRulesetReadPermission(ctx)
-	if err != nil {
-		respondWithError(w, "Failed to check permissions", err)
-		return
-	}
-	if !sufficientPrivileges {
-		RespondWithCustomError(w, &exception.CustomError{
-			Status:  http.StatusForbidden,
-			Code:    exception.InsufficientPrivileges,
-			Message: exception.InsufficientPrivilegesMsg,
-		})
-		return
-	}
+	// no auth checks by design
 	disposition := r.URL.Query().Get("disposition")
 
 	if disposition != "attachment" && disposition != "inline" {
@@ -271,7 +257,7 @@ func (c rulesetControllerImpl) GetRulesetData(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	data, filename, err := c.rulesetService.GetRulesetData(ctx, rulesetId)
+	data, filename, err := c.rulesetService.GetRulesetData(r.Context(), rulesetId)
 	if err != nil {
 		respondWithError(w, "Failed to get ruleset data", err)
 		return

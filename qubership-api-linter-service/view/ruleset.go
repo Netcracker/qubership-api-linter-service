@@ -13,6 +13,7 @@ type Ruleset struct {
 	Id           string        `json:"id"`
 	Name         string        `json:"name"`
 	Status       RulesetStatus `json:"status"`
+	FileName     string        `json:"fileName"`
 	Linter       Linter        `json:"linter"`
 	ApiType      ApiType       `json:"apiType"`
 	CreatedAt    time.Time     `json:"createdAt"`
