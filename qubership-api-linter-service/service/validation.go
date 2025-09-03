@@ -40,6 +40,7 @@ func NewValidationService(
 	versionResultRepository repository.VersionResultRepository,
 	lintResultRepository repository.LintResultRepository,
 	rulesetRepository repository.RulesetRepository,
+	docLintTaskRepository repository.DocLintTaskRepository,
 	versionTaskProcessor VersionTaskProcessor,
 	apihubClient client.ApihubClient,
 	executorId string) ValidationService {
@@ -48,6 +49,7 @@ func NewValidationService(
 		versionResultRepository: versionResultRepository,
 		lintResultRepository:    lintResultRepository,
 		rulesetRepository:       rulesetRepository,
+		docLintTaskRepository:   docLintTaskRepository,
 		versionTaskProcessor:    versionTaskProcessor,
 		apihubClient:            apihubClient,
 		executorId:              executorId,
@@ -59,7 +61,7 @@ type validationServiceImpl struct {
 	versionResultRepository repository.VersionResultRepository
 	lintResultRepository    repository.LintResultRepository
 	rulesetRepository       repository.RulesetRepository
-	docLintTaskRepository   repository.DocLintTaskRepository // TODO
+	docLintTaskRepository   repository.DocLintTaskRepository
 
 	versionTaskProcessor VersionTaskProcessor
 	apihubClient         client.ApihubClient
@@ -67,8 +69,6 @@ type validationServiceImpl struct {
 }
 
 func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) ([]view.ValidationSummaryForApiType, error) {
-	// TODO: Summary for each API type
-
 	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err

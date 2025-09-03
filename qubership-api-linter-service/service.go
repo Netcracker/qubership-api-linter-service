@@ -140,7 +140,7 @@ func main() {
 
 	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, apihubClient, spectralExecutor, executorId)
 
-	validationService := service.NewValidationService(versionLintTaskRepository, versionResultRepository, lintResultRepository, ruleSetRepository, versionTaskProcessor, apihubClient, executorId)
+	validationService := service.NewValidationService(versionLintTaskRepository, versionResultRepository, lintResultRepository, ruleSetRepository, docLintTaskRepository, versionTaskProcessor, apihubClient, executorId)
 	publishEventListener := service.NewPublishEventListener(olricProvider, validationService)
 	rulesetService := service.NewRulesetService(ruleSetRepository)
 	authorizationService := service.NewAuthorizationService(apihubClient)
