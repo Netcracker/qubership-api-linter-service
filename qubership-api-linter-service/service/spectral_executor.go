@@ -54,6 +54,7 @@ func (s *spectralExecutorImpl) LintLocalDoc(docPath string, rulesetPath string) 
 	} else {
 		args = append(args, "-q")
 	}
+	args = append(args, "--fail-on-unmatched-globs")
 	args = append(args, "-f")
 	args = append(args, "json")
 	args = append(args, "-o.json")
@@ -91,7 +92,11 @@ func (s *spectralExecutorImpl) LintLocalDoc(docPath string, rulesetPath string) 
 
 		//spectral process exits with status 1 if validation contains at least one error...
 		if err.Error() != "exit status 1" {
-			return "", calculationTime.Milliseconds(), fmt.Errorf("failed to get Spectral report: %v", err.Error())
+			errStr := err.Error()
+			if stderr.String() != "" {
+				errStr += ": " + stderr.String()
+			}
+			return "", calculationTime.Milliseconds(), fmt.Errorf("failed to get Spectral report: %v", errStr)
 		}
 	}
 
