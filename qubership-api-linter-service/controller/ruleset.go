@@ -246,6 +246,9 @@ func (c rulesetControllerImpl) GetRulesetData(w http.ResponseWriter, r *http.Req
 	rulesetId := getStringParam(r, "ruleset_id")
 	// no auth checks by design
 	disposition := r.URL.Query().Get("disposition")
+	if disposition == "" {
+		disposition = "inline"
+	}
 
 	if disposition != "attachment" && disposition != "inline" {
 		RespondWithCustomError(w, &exception.CustomError{

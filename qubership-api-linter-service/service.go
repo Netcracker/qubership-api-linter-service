@@ -23,6 +23,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/security"
 	"github.com/google/uuid"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -35,6 +36,14 @@ import (
 
 	_ "net/http/pprof"
 )
+
+func init() {
+	logLevel, err := log.ParseLevel(os.Getenv("LOG_LEVEL"))
+	if err != nil {
+		logLevel = log.InfoLevel
+	}
+	log.SetLevel(logLevel)
+}
 
 func main() {
 	systemInfoService, err := service.NewSystemInfoService()

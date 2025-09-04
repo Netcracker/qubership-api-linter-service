@@ -13,7 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -150,9 +149,8 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		return
 	}
 	defer os.RemoveAll(tempDir)
-
-	parts := strings.Split(task.FileId, "/")
-	fileName := parts[len(parts)-1]
+	ext := filepath.Ext(task.FileId)
+	fileName := "file" + ext
 
 	filePath := filepath.Join(tempDir, fileName)
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
@@ -189,6 +187,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			d.handleError(ctx, task.Id, fmt.Errorf("error reading result file: %s", resErr))
 			return
 		}
+		log.Tracef("result file size is %d bytes", len(result))
 		var report []interface{}
 		err = json.Unmarshal(result, &report)
 		if err != nil {
@@ -201,6 +200,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		summary := calculateSpectralSummary(report)
 
 		LinterVersion := d.spectralExecutor.GetLinterVersion()
+		log.Tracef("Spectral linter version is %s", LinterVersion)
 		sumJson, err := json.Marshal(summary)
 		if err != nil {
 			d.handleError(ctx, task.Id, fmt.Errorf("error marshaling summary: %s", err))

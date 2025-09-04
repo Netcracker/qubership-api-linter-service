@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
+	log "github.com/sirupsen/logrus"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -48,7 +49,11 @@ func (s *spectralExecutorImpl) LintLocalDoc(docPath string, rulesetPath string) 
 	args = append(args, docPath)
 	args = append(args, "--ruleset")
 	args = append(args, rulesetPath)
-	args = append(args, "-q")
+	if log.GetLevel() == log.TraceLevel {
+		args = append(args, "-v")
+	} else {
+		args = append(args, "-q")
+	}
 	args = append(args, "-f")
 	args = append(args, "json")
 	args = append(args, "-o.json")
@@ -74,7 +79,8 @@ func (s *spectralExecutorImpl) LintLocalDoc(docPath string, rulesetPath string) 
 	})
 	wg.Wait()
 
-	// TODO: read out && stderr ???
+	log.Tracef("stdout: %s", out.String())
+	log.Tracef("stderr: %s", stderr.String())
 
 	calculationTime := time.Since(start)
 	if err != nil {
