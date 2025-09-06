@@ -60,6 +60,7 @@ func (v versionResultRepositoryImpl) GetVersionAndDocsSummary(ctx context.Contex
 		Where("package_id = ?", packageId).
 		Where("version = ?", version).
 		Where("revision = ?", revision).
+		Order("slug ASC").
 		Select()
 	if err != nil {
 		if errors.As(err, &sql.ErrNoRows) {

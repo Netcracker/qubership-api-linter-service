@@ -52,6 +52,15 @@ func MakeRulesetView(ent Ruleset) view.Ruleset {
 	}
 }
 
+func MakeRulesetMetadataView(ent Ruleset) view.RulesetMetadata {
+	return view.RulesetMetadata{
+		Id:       ent.Id,
+		Name:     ent.Name,
+		Status:   ent.Status,
+		FileName: ent.FileName,
+	}
+}
+
 func MakeActivationRecordView(ent RulesetActivationHistory) view.ActivationRecord {
 	var to *time.Time
 	if !ent.DeactivatedAt.IsZero() {

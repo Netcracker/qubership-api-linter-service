@@ -56,14 +56,21 @@ type VersionOperationGroup struct {
 	ExportTemplateFilename string `json:"exportTemplateFileName,omitempty"`
 }
 
-// TODO: linter-specific summary? what about other spectral types?
+type ValidationSummaryForVersion struct {
+	Status    LintedVersionStatus  `json:"status"`
+	Details   string               `json:"details,omitempty"`
+	Documents []ValidationDocument `json:"documents,omitempty"`
+	Rulesets  []RulesetMetadata    `json:"rulesets,omitempty"`
+}
 
-type ValidationSummaryForApiType struct {
-	ApiType         ApiType             `json:"apiType"`
-	Status          LintedVersionStatus `json:"status"`
-	Ruleset         *RulesetMetadata    `json:"ruleset,omitempty"`
-	IssuesSummary   *IssuesSummary      `json:"issuesSummary,omitempty"`
-	FailedDocuments []string            `json:"failedDocuments,omitempty"`
+type ValidationDocument struct {
+	Status        LintedDocumentStatus `json:"status"`
+	Details       string               `json:"details,omitempty"`
+	Slug          string               `json:"slug"`
+	ApiType       ApiType              `json:"apiType"`
+	DocumentName  string               `json:"documentName"`
+	RulesetId     string               `json:"rulesetId"`
+	IssuesSummary IssuesSummary        `json:"issuesSummary"`
 }
 
 type IssuesSummary struct {
@@ -75,10 +82,9 @@ type IssuesSummary struct {
 type LintedVersionStatus string
 
 const (
-	VersionStatusNotValidated LintedVersionStatus = "notValidated" // TODO: not started or not scheduled??
-	VersionStatusInProgress   LintedVersionStatus = "inProgress"   // TODO: applicable for scheduled case? or only for running?
-	VersionStatusSuccess      LintedVersionStatus = "success"
-	VersionStatusFailed       LintedVersionStatus = "failed" //  TODO: SPEC: past tense vs present tense for success
+	VersionStatusInProgress LintedVersionStatus = "inProgress"
+	VersionStatusSuccess    LintedVersionStatus = "success"
+	VersionStatusFailed     LintedVersionStatus = "failed" //  TODO: SPEC: past tense vs present tense for success
 )
 
 func (i *IssuesSummary) Append(add IssuesSummary) {

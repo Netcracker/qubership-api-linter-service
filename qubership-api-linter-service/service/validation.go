@@ -30,7 +30,7 @@ import (
 
 type ValidationService interface {
 	ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error)
-	GetVersionSummary(ctx context.Context, packageId string, version string) ([]view.ValidationSummaryForApiType, error)
+	GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error)
 	GetValidatedDocuments(ctx context.Context, packageId string, version string) ([]view.ValidatedDocument, error)
 	GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error)
 }
@@ -68,7 +68,7 @@ type validationServiceImpl struct {
 	executorId           string
 }
 
-func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) ([]view.ValidationSummaryForApiType, error) {
+func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
 	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
@@ -87,50 +87,25 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 		if len(varTasks) == 0 {
 			return nil, nil
 		}
-		verTask := varTasks[0]
+		return &view.ValidationSummaryForVersion{
+			Status:    view.VersionStatusInProgress,
+			Details:   "",
+			Documents: nil,
+			Rulesets:  nil,
+		}, nil
+	}
 
-		docTasks, err := v.docLintTaskRepository.GetDocTasksForVersionTasks(ctx, []string{verTask.Id})
-		if err != nil {
-			return nil, err
-		}
-
-		rulesetMap, err := v.makeRulesetMap(ctx, makeRulesetIdsFromTasks(docTasks))
-		if err != nil {
-			return nil, err
-		}
-		resultMap := make(map[view.ApiType]view.ValidationSummaryForApiType)
-		for _, doc := range docTasks {
-			ruleset, ok := rulesetMap[doc.RulesetId]
-			if !ok {
-				return nil, fmt.Errorf("ruleset with id %s is not found in cache map", doc.RulesetId)
-			}
-
-			resultMap[doc.APIType] = view.ValidationSummaryForApiType{
-				ApiType: doc.APIType,
-				Status:  view.VersionStatusInProgress,
-				Ruleset: &view.RulesetMetadata{
-					Id:       ruleset.Id,
-					Name:     ruleset.Name,
-					Status:   ruleset.Status,
-					FileName: ruleset.FileName,
-				},
-				IssuesSummary:   nil,
-				FailedDocuments: nil,
-			}
-		}
-
-		var result []view.ValidationSummaryForApiType
-		for _, val := range resultMap {
-			result = append(result, val)
-		}
-		return result, nil
+	result := &view.ValidationSummaryForVersion{
+		Status:    lintedVer.LintStatus,
+		Details:   lintedVer.LintDetails,
+		Documents: nil,
+		Rulesets:  nil,
 	}
 
 	rulesetMap, err := v.makeRulesetMap(ctx, makeRulesetIdsFromLintedDocs(lintedDocs))
 	if err != nil {
 		return nil, err
 	}
-	resultMap := make(map[view.ApiType]view.ValidationSummaryForApiType)
 
 	for _, doc := range lintedDocs {
 		resultSummary, err := v.lintResultRepository.GetLintResultSummary(ctx, doc.DataHash, doc.RulesetId)
@@ -164,29 +139,23 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
 		}
 
-		value, exists := resultMap[doc.SpecificationType]
-		if !exists {
-			resultMap[doc.SpecificationType] = view.ValidationSummaryForApiType{
-				ApiType: doc.SpecificationType,
-				Status:  lintedVer.LintStatus,
-				Ruleset: &view.RulesetMetadata{
-					Id:       ruleset.Id,
-					Name:     ruleset.Name,
-					Status:   ruleset.Status,
-					FileName: ruleset.FileName,
-				},
-				IssuesSummary:   summ,
-				FailedDocuments: nil,
-			}
-		} else {
-			value.IssuesSummary.Append(*summ)
-			resultMap[doc.SpecificationType] = value
-		}
+		result.Documents = append(result.Documents, view.ValidationDocument{
+			Status:       doc.LintStatus,
+			Details:      doc.LintDetails,
+			Slug:         doc.Slug,
+			ApiType:      doc.SpecificationType,
+			DocumentName: doc.FileId,
+			RulesetId:    doc.RulesetId,
+			IssuesSummary: view.IssuesSummary{
+				Error:   summ.Error,
+				Warning: summ.Warning,
+				Info:    summ.Info,
+			},
+		})
 	}
 
-	var result []view.ValidationSummaryForApiType
-	for _, val := range resultMap {
-		result = append(result, val)
+	for _, val := range rulesetMap {
+		result.Rulesets = append(result.Rulesets, entity.MakeRulesetMetadataView(val))
 	}
 	return result, nil
 }
@@ -231,18 +200,10 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 		return nil, nil
 	}
 
-	issues := make([]view.ValidationIssue, 0)
-	var spectralOutput []view.SpectralOutputItem
+	var spectralOutput interface{}
 	err = json.Unmarshal(lintResult.Data, &spectralOutput)
 	if err != nil {
 		return nil, err
-	}
-	for _, item := range spectralOutput {
-		issues = append(issues, view.ValidationIssue{
-			Path:     item.Path,
-			Severity: view.ConvertSpectralSeverityToString(item.Severity),
-			Message:  item.Message,
-		})
 	}
 
 	ruleset, err := v.rulesetRepository.GetRulesetById(ctx, lintedDocument.RulesetId)
@@ -255,7 +216,7 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 
 	result := view.DocumentResult{
 		Ruleset:           entity.MakeRulesetView(*ruleset),
-		Issues:            issues,
+		Issues:            spectralOutput,
 		ValidatedDocument: entity.MakeValidatedDocumentView(*lintedDocument),
 	}
 
