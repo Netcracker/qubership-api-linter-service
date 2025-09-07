@@ -200,10 +200,19 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 		return nil, nil
 	}
 
-	var spectralOutput interface{}
+	issues := make([]view.ValidationIssue, 0)
+	var spectralOutput []view.SpectralOutputItem
 	err = json.Unmarshal(lintResult.Data, &spectralOutput)
 	if err != nil {
 		return nil, err
+	}
+	for _, item := range spectralOutput {
+		issues = append(issues, view.ValidationIssue{
+			Path:     item.Path,
+			Code:     item.Code,
+			Severity: view.ConvertSpectralSeverityToString(item.Severity),
+			Message:  item.Message,
+		})
 	}
 
 	ruleset, err := v.rulesetRepository.GetRulesetById(ctx, lintedDocument.RulesetId)
@@ -216,7 +225,7 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 
 	result := view.DocumentResult{
 		Ruleset:           entity.MakeRulesetView(*ruleset),
-		Issues:            spectralOutput,
+		Issues:            issues,
 		ValidatedDocument: entity.MakeValidatedDocumentView(*lintedDocument),
 	}
 
