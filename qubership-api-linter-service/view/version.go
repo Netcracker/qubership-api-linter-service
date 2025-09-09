@@ -60,7 +60,7 @@ type ValidationSummaryForVersion struct {
 	Status    LintedVersionStatus  `json:"status"`
 	Details   string               `json:"details,omitempty"`
 	Documents []ValidationDocument `json:"documents,omitempty"`
-	Rulesets  []RulesetMetadata    `json:"rulesets,omitempty"`
+	Rulesets  []Ruleset            `json:"rulesets,omitempty"`
 }
 
 type ValidationDocument struct {

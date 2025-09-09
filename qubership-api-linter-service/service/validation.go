@@ -155,7 +155,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 	}
 
 	for _, val := range rulesetMap {
-		result.Rulesets = append(result.Rulesets, entity.MakeRulesetMetadataView(val))
+		result.Rulesets = append(result.Rulesets, entity.MakeRulesetView(val))
 	}
 	return result, nil
 }
