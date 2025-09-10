@@ -108,6 +108,17 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 	}
 
 	for _, doc := range lintedDocs {
+		if doc.LintStatus == view.StatusFailure {
+			result.Documents = append(result.Documents, view.ValidationDocument{
+				Status:       doc.LintStatus,
+				Details:      doc.LintDetails,
+				Slug:         doc.Slug,
+				ApiType:      doc.SpecificationType,
+				DocumentName: doc.FileId,
+				RulesetId:    doc.RulesetId,
+			})
+			continue
+		}
 		resultSummary, err := v.lintResultRepository.GetLintResultSummary(ctx, doc.DataHash, doc.RulesetId)
 		if err != nil {
 			return nil, err
@@ -146,7 +157,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 			ApiType:      doc.SpecificationType,
 			DocumentName: doc.FileId,
 			RulesetId:    doc.RulesetId,
-			IssuesSummary: view.IssuesSummary{
+			IssuesSummary: &view.IssuesSummary{
 				Error:   summ.Error,
 				Warning: summ.Warning,
 				Info:    summ.Info,
@@ -192,6 +203,23 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 		return nil, nil
 	}
 
+	ruleset, err := v.rulesetRepository.GetRulesetById(ctx, lintedDocument.RulesetId)
+	if err != nil {
+		return nil, err
+	}
+	if ruleset == nil {
+		return nil, fmt.Errorf("ruleset with id %s not found", lintedDocument.RulesetId)
+	}
+
+	if lintedDocument.LintStatus == view.StatusFailure {
+		result := view.DocumentResult{
+			Ruleset:           entity.MakeRulesetView(*ruleset),
+			Issues:            nil,
+			ValidatedDocument: entity.MakeValidatedDocumentView(*lintedDocument),
+		}
+		return &result, nil
+	}
+
 	lintResult, err := v.lintResultRepository.GetLintResult(ctx, lintedDocument.DataHash, lintedDocument.RulesetId)
 	if err != nil {
 		return nil, err
@@ -213,14 +241,6 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 			Severity: view.ConvertSpectralSeverityToString(item.Severity),
 			Message:  item.Message,
 		})
-	}
-
-	ruleset, err := v.rulesetRepository.GetRulesetById(ctx, lintedDocument.RulesetId)
-	if err != nil {
-		return nil, err
-	}
-	if ruleset == nil {
-		return nil, fmt.Errorf("ruleset with id %s not found", lintedDocument.RulesetId)
 	}
 
 	result := view.DocumentResult{

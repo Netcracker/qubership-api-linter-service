@@ -70,7 +70,7 @@ type ValidationDocument struct {
 	ApiType       ApiType              `json:"apiType"`
 	DocumentName  string               `json:"documentName"`
 	RulesetId     string               `json:"rulesetId"`
-	IssuesSummary IssuesSummary        `json:"issuesSummary"`
+	IssuesSummary *IssuesSummary       `json:"issuesSummary,omitempty"`
 }
 
 type IssuesSummary struct {

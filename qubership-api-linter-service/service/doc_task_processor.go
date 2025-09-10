@@ -171,49 +171,59 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		return
 	}
 
+	status := view.StatusSuccess
+	details := ""
+	var result []byte
+	var report []interface{}
+	var summary view.SpectralResultSummary
+	var sumAsMap map[string]interface{}
+
 	if task.Linter == view.SpectralLinter {
 		// it might take a long time due to linter lock or just long execution
 
 		log.Infof("Processing doc %s for package %s, version %s@%d by spectral", task.FileId, task.PackageId, task.Version, task.Revision)
 		resultPath, calcTime, err := d.spectralExecutor.LintLocalDoc(filePath, rulesetPath)
 		if err != nil {
-			d.handleError(ctx, task.Id, fmt.Errorf("error linting doc with spectral: %s", err))
-			// TODO: error to do linted_document?
-			return
+			status = view.StatusFailure
+			details = fmt.Sprintf("error linting doc with spectral: %s", err)
 		}
 
-		result, resErr := os.ReadFile(resultPath)
-		if resErr != nil {
-			d.handleError(ctx, task.Id, fmt.Errorf("error reading result file: %s", resErr))
-			return
-		}
-		log.Tracef("result file size is %d bytes", len(result))
-		var report []interface{}
-		err = json.Unmarshal(result, &report)
-		if err != nil {
-			d.handleError(ctx, task.Id, fmt.Errorf("error unmarshaling result: %s", err))
-			return
+		if status == view.StatusSuccess {
+			result, err = os.ReadFile(resultPath)
+			if err != nil {
+				status = view.StatusFailure
+				details = fmt.Sprintf("error reading result file: %s", err)
+			}
+			log.Tracef("result file size is %d bytes", len(result))
 		}
 
+		if status == view.StatusSuccess {
+			err = json.Unmarshal(result, &report)
+			if err != nil {
+				status = view.StatusFailure
+				details = fmt.Sprintf("error unmarshalling result: %s", err)
+			}
+		}
 		log.Infof("Doc task id = %s, Processing time = %+vms", task.Id, calcTime)
 
-		summary := calculateSpectralSummary(report)
+		if status == view.StatusSuccess {
+			summary = calculateSpectralSummary(report)
+
+			sumJson, err := json.Marshal(summary)
+			if err != nil {
+				status = view.StatusFailure
+				details = fmt.Sprintf("error marshaling summary: %s", err)
+			} else {
+				err = json.Unmarshal(sumJson, &sumAsMap)
+				if err != nil {
+					status = view.StatusFailure
+					details = fmt.Sprintf("error unmarshaling summary: %s", err)
+				}
+			}
+		}
 
 		LinterVersion := d.spectralExecutor.GetLinterVersion()
 		log.Tracef("Spectral linter version is %s", LinterVersion)
-		sumJson, err := json.Marshal(summary)
-		if err != nil {
-			d.handleError(ctx, task.Id, fmt.Errorf("error marshaling summary: %s", err))
-			return
-		}
-
-		var sumAsMap map[string]interface{}
-
-		err = json.Unmarshal(sumJson, &sumAsMap)
-		if err != nil {
-			d.handleError(ctx, task.Id, fmt.Errorf("error unmarshaling summary: %s", err))
-			return
-		}
 
 		docEnt := entity.LintedDocument{
 			PackageId:         task.PackageId,
@@ -224,8 +234,8 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			SpecificationType: task.APIType,
 			RulesetId:         task.RulesetId,
 			DataHash:          docHash,
-			LintStatus:        view.StatusSuccess, // TODO calculate based on linter result
-			LintDetails:       "",
+			LintStatus:        status,
+			LintDetails:       details,
 		}
 
 		verEnt := entity.LintedVersion{
@@ -237,15 +247,19 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			LintedAt:    time.Now(),
 		}
 
-		lintFileResult := entity.LintFileResult{
-			DataHash:      docHash,
-			RulesetId:     task.RulesetId,
-			LinterVersion: LinterVersion,
-			Data:          result,
-			Summary:       sumAsMap,
+		var lintFileResult *entity.LintFileResult
+
+		if status == view.StatusSuccess {
+			lintFileResult = &entity.LintFileResult{
+				DataHash:      docHash,
+				RulesetId:     task.RulesetId,
+				LinterVersion: LinterVersion,
+				Data:          result,
+				Summary:       sumAsMap,
+			}
 		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, calcTime, verEnt, docEnt, &lintFileResult, d.executorId)
+		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTime, verEnt, docEnt, lintFileResult, d.executorId)
 		if err != nil {
 			d.handleError(ctx, task.Id, fmt.Errorf("failed to save lint result with error: %s", err))
 			return

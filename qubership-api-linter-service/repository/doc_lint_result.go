@@ -11,7 +11,7 @@ import (
 
 type DocResultRepository interface {
 	LintResultExists(ctx context.Context, dataHash string) (bool, error)
-	SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error
+	SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error
 }
 
 func NewDocResultRepository(cp db.ConnectionProvider) DocResultRepository {
@@ -27,12 +27,14 @@ func (d docResultRepositoryImpl) LintResultExists(ctx context.Context, dataHash 
 	panic("implement me")
 }
 
-func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error {
+func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64,
+	version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error {
 	return d.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
 
 		var docLintTask *entity.DocumentLintTask
 		res, err := tx.Model(docLintTask).
-			Set("status = ?", view.TaskStatusComplete).
+			Set("status = ?", status).
+			Set("detais = ?", details).
 			Set("last_active = now()").
 			Set("lint_time_ms = ?", lintTimeMs).
 			Where("id = ?", docLintTaskId).
