@@ -24,6 +24,7 @@ type VersionLintTaskRepository interface {
 	VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion) error
 	VersionLintFailed(ctx context.Context, taskId string, details string) error
 	UpdateLastActive(ctx context.Context, taskId string, executorId string) error
+	EmptyVersionCompleted(ctx context.Context, task entity.VersionLintTask) error
 }
 
 type versionLintTaskRepositoryImpl struct {
@@ -116,6 +117,37 @@ func (r *versionLintTaskRepositoryImpl) VersionLintCompleted(ctx context.Context
 		}
 
 		_, err = tx.Model(ver).WherePK().Update()
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+}
+
+func (r *versionLintTaskRepositoryImpl) EmptyVersionCompleted(ctx context.Context, task entity.VersionLintTask) error {
+	return r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
+		var taskEnt entity.VersionLintTask
+		_, err := tx.Model(&taskEnt).
+			Set("status = ?", view.TaskStatusComplete).
+			Set("last_active = ?", time.Now()).
+			Where("id = ?", task.Id).
+			Update()
+		if err != nil {
+			return err
+		}
+
+		verEnt := entity.LintedVersion{
+			PackageId:   task.PackageId,
+			Version:     task.Version,
+			Revision:    task.Revision,
+			LintStatus:  view.VersionStatusSuccess,
+			LintDetails: "No linted documents",
+			LintedAt:    time.Now(),
+		}
+
+		_, err = tx.Model(&verEnt).WherePK().OnConflict("(package_id, version, revision) do update").Insert()
 		if err != nil {
 			return err
 		}

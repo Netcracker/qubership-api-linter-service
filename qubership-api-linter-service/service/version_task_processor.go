@@ -156,6 +156,16 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 		docTasks = append(docTasks, docTaskEnt)
 	}
 
+	if len(docTasks) == 0 {
+		err = v.verRepo.EmptyVersionCompleted(ctx, *task)
+		if err != nil {
+			v.handleProcessingFailed(ctx, *task, err)
+			return
+		}
+		log.Infof("Version lint task %s processing finished, no suitable documents to lint", taskId)
+		return
+	}
+
 	err = v.docRepo.SaveDocTasksAndUpdVer(ctx, docTasks, taskId)
 	if err != nil {
 		v.handleProcessingFailed(ctx, *task, fmt.Errorf("failed to save doc tasks: %s", err))
