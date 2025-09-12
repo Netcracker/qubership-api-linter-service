@@ -34,7 +34,7 @@ func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTask
 		var docLintTask *entity.DocumentLintTask
 		res, err := tx.Model(docLintTask).
 			Set("status = ?", status).
-			Set("detais = ?", details).
+			Set("details = ?", details).
 			Set("last_active = now()").
 			Set("lint_time_ms = ?", lintTimeMs).
 			Where("id = ?", docLintTaskId).
