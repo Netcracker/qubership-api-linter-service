@@ -20,8 +20,8 @@ rules:
     given: $.info.license
     severity: warn
     then:
-        field: url
-        function: truthy
+      field: url
+      function: truthy
   no-example-com-in-url:
     description: Url must not use example.com based domain inside
     given: $..*

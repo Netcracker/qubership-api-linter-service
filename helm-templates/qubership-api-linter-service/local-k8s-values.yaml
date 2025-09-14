@@ -1,25 +1,24 @@
 qubershipApiLinterService:
-  version: ''
-  
+  version: ""
+
   logLevel: "INFO"
 
   image:
-    repository: 'ghcr.io/netcracker/qubership-api-linter-service' 
-    tag: 'dev'
-  replicas: 1 
- 
+    repository: "ghcr.io/netcracker/qubership-api-linter-service"
+    tag: "dev"
+  replicas: 1
+
   resource:
     memory:
       request: "150Mi"
       limit: "150Mi"
-    cpu:  
+    cpu:
       request: "30m"
       limit: "1"
 
   env:
-    originAllowed: ''
+    originAllowed: ""
 
   ingress:
     enabled: true
-    url: 'qubership-api-linter-service.localhost' 
-  
+    url: "qubership-api-linter-service.localhost"

@@ -2,19 +2,19 @@
 
 This folder contains `qubership-api-linter-service` Helm chart for Qubership API Linter Service deployment to k8s cluster.
 
-It is ready for usage Helm chart. 
+It is ready for usage Helm chart.
 
 ## 3rd party dependencies
 
-| Name | Version | Mandatory/Optional | Comment |
-| ---- | ------- |------------------- | ------- |
-| Kubernetes | 1.23+ | Mandatory |  |
+| Name       | Version | Mandatory/Optional | Comment |
+| ---------- | ------- | ------------------ | ------- |
+| Kubernetes | 1.23+   | Mandatory          |         |
 
 ## HWE
 
-|     | CPU request | CPU limit | RAM request | RAM limit |
-| --- | ----------- | --------- | ----------- | --------- |
-| Default values | 30m | 1 | 150Mi | 150Mi |
+|                | CPU request | CPU limit | RAM request | RAM limit |
+| -------------- | ----------- | --------- | ----------- | --------- |
+| Default values | 30m         | 1         | 150Mi       | 150Mi     |
 
 ## Prerequisites
 

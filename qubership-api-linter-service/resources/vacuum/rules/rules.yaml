@@ -19,22 +19,22 @@ rules:
     message: "License must have an URL defined"
     description: License URL check
     formats:
-        - oas3
-        - oas3_1
+      - oas3
+      - oas3_1
     given: $.info.license
     howToFix: Please supply license object with "url"
     recommended: true
     resolved: true
     severity: warn
     then:
-        field: url
-        function: truthy
+      field: url
+      function: truthy
   no-example-com-in-url:
     message: "Url must not use example.com anyhow"
     description: Url must not use example.com based domain inside
     formats:
-        - oas3
-        - oas3_1
+      - oas3
+      - oas3_1
     given: $..*
     howToFix: Please exclude example.com from "url"
     recommended: true

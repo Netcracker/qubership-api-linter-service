@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
-import { truthy, undefined as pattern, schema } from "@stoplight/spectral-functions";
+import {
+  truthy,
+  undefined as pattern,
+  schema,
+} from "@stoplight/spectral-functions";
 import { oas3 } from "@stoplight/spectral-formats";
 
 export default {
@@ -28,7 +32,7 @@ export default {
         field: "url",
         function: truthy,
         functionOptions: {
-            notMatch: "example\.com",
+          notMatch: "example\.com",
         },
       },
     },
