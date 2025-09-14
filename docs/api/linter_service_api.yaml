@@ -380,10 +380,8 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                minItems: 1
-                items:
-                  $ref: "#/components/schemas/ValidationSummary"
+                $ref: "#/components/schemas/ValidationSummary"
+
         "401":
           description: Unauthorized
           content:
@@ -450,53 +448,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Package version not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /api/v1/packages/{packageId}/versions/{version}/validation/documents:
-    get:
-      tags:
-        - Validation Result
-      summary: Get validated documents for a package version
-      description: >
-        Retrieves the list of documents that were validated within the specified package version,
-        providing basic metadata like document slug, name and specification type.
-      operationId: getPackageVersionValidationDocuments
-      parameters:
-        - name: packageId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: version
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ValidatedDocument"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not found
           content:
             application/json:
               schema:
@@ -727,16 +678,8 @@ components:
       description: Aggregated validation summary for a package version.
       type: object
       required:
-        - apiType
         - status
       properties:
-        apiType:
-          description: Type of the API.
-          type: string
-          enum:
-            - rest
-        ruleset:
-          $ref: "#/components/schemas/RulesetMetadata"
         status:
           description: Current validation status for the package version.
           type: string
@@ -744,27 +687,53 @@ components:
             - success
             - inProgress
             - notValidated
-            - failed
-        issuesSummary:
-          description: Summary of validation issues grouped by severity.
-          type: object
-          properties:
-            error:
-              description: Total number of errors.
-              type: integer
-            warning:
-              description: Total number of warnings.
-              type: integer
-            info:
-              description: Total number of informational messages.
-              type: integer
-        failedDocuments:
-          description: List of documents that failed during validation
+            - error
+        documents:
           type: array
           items:
-            type: string
-            description: Name of the failed document
-          example: ["Document_name_1.yaml", "Document_name_2.json"]
+            - type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - success
+                    - error
+                details:
+                  type: string
+                slug:
+                  type: string
+                apiType:
+                  description: Type of the API.
+                  type: string
+                  enum:
+                    - rest
+                documentName:
+                  type: string
+                rulesetId:
+                  type: string
+                issuesSummary:
+                  type: object
+                  properties:
+                    error:
+                      type: integer
+                    warning:
+                      type: integer
+                    info:
+                      type: integer
+                  required:
+                    - error
+                    - warning
+                    - info
+              required:
+                - status
+                - slug
+                - apiType
+                - documentName
+                - rulesetId
+        rulesets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ruleset"
     ValidatedDocument:
       description: Metadata about the validated document.
       type: object
@@ -805,12 +774,16 @@ components:
               - path
               - severity
               - message
+              - code
             properties:
               path:
                 description: >
                   Path segments thar are pointing to the location of the issue in the document,
                   conforming to the syntax defined in IETF RFC 9535:
                   https://datatracker.ietf.org/doc/html/rfc9535
+                type: string
+              code:
+                description: Id of the rule that was applied to identify the issue.
                 type: string
               severity:
                 description: Severity level of the issue.
