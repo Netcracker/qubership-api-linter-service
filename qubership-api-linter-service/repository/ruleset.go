@@ -18,6 +18,7 @@ type RulesetRepository interface {
 	ListRulesets(ctx context.Context) ([]entity.Ruleset, error)
 	GetActiveRulesets(ctx context.Context, apiType view.ApiType) (map[view.Linter]entity.Ruleset, error)
 	GetRulesetById(ctx context.Context, id string) (*entity.Ruleset, error)
+	RulesetExists(ctx context.Context, name string, apiType view.ApiType) (bool, error)
 	GetRulesetWithData(ctx context.Context, id string) (*entity.RulesetWithData, error)
 	GetActivationHistory(ctx context.Context, id string) ([]entity.RulesetActivationHistory, error)
 	DeleteRuleset(ctx context.Context, id string) error
@@ -147,6 +148,22 @@ func (r ruleSetRepositoryImpl) GetRulesetById(ctx context.Context, id string) (*
 		return nil, err
 	}
 	return &ruleset, nil
+}
+
+func (r ruleSetRepositoryImpl) RulesetExists(ctx context.Context, name string, apiType view.ApiType) (bool, error) {
+	ruleset := new(entity.Ruleset)
+
+	err := r.cp.GetConnection().ModelContext(ctx, ruleset).
+		Where("name = ?", name).
+		Where("api_type = ?", apiType).
+		Select()
+	if err != nil {
+		if errors.Is(err, pg.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return ruleset != nil, nil
 }
 
 func (r ruleSetRepositoryImpl) GetRulesetWithData(ctx context.Context, id string) (*entity.RulesetWithData, error) {

@@ -42,7 +42,7 @@ create table ruleset
     file_name      varchar                     not null,
     can_be_deleted bool                        not null,
     last_activated timestamp without time zone,
-    constraint ruleset_name_unique unique (name)
+    constraint ruleset_name_unique unique (name, api_type)
 );
 
 insert into ruleset
@@ -182,6 +182,6 @@ create table lint_file_result
     data           bytea   not null,
     summary        jsonb   not null,
     constraint lint_file_result_pk
-        primary key (data_hash, ruleset_id) -- TODO: add linter_version to PK???
+        primary key (data_hash, ruleset_id)
 );
 
