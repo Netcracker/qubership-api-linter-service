@@ -83,6 +83,7 @@ func (r ruleSetRepositoryImpl) ActivateRuleset(ctx context.Context, id, oldId st
 			Set("deactivated_at = ?", time.Now()).
 			Set("deactivated_by = ?", user).
 			Where("ruleset_id = ?", oldId).
+			Where("deactivated_at is null").
 			Update()
 		if err != nil {
 			return err
