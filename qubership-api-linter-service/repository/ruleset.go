@@ -106,9 +106,7 @@ func (r ruleSetRepositoryImpl) ActivateRuleset(ctx context.Context, id, oldId st
 
 func (r ruleSetRepositoryImpl) ListRulesets(ctx context.Context) ([]entity.Ruleset, error) {
 	var rulesets []entity.Ruleset
-	err := r.cp.GetConnection().ModelContext(ctx, &rulesets).
-		Where("deleted_at is null").
-		Select()
+	err := r.cp.GetConnection().ModelContext(ctx, &rulesets).Select()
 	if errors.Is(err, pg.ErrNoRows) {
 		return nil, nil
 	}
@@ -140,7 +138,6 @@ func (r ruleSetRepositoryImpl) GetRulesetById(ctx context.Context, id string) (*
 
 	err := r.cp.GetConnection().ModelContext(ctx, &ruleset).
 		Where("id = ?", id).
-		Where("deleted_at is null").
 		Select()
 	if err != nil {
 		if errors.Is(err, pg.ErrNoRows) {
@@ -171,7 +168,6 @@ func (r ruleSetRepositoryImpl) GetRulesetWithData(ctx context.Context, id string
 	var ruleset entity.RulesetWithData
 	err := r.cp.GetConnection().ModelContext(ctx, &ruleset).
 		Where("id = ?", id).
-		Where("deleted_at is null").
 		Select()
 	if errors.Is(err, pg.ErrNoRows) {
 		return nil, nil
@@ -209,10 +205,8 @@ func (r ruleSetRepositoryImpl) DeleteRuleset(ctx context.Context, id string) err
 		}
 
 		_, err = tx.Model(&ruleset).
-			Set("deleted_at = ?", time.Now()).
-			Set("deleted_by = ?", "system"). // TODO: Replace with actual user from context if available
 			Where("id = ?", id).
-			Update()
+			Delete()
 		return err
 	})
 }
