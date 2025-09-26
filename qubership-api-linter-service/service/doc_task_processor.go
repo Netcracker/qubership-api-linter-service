@@ -89,7 +89,7 @@ func (d docTaskProcessorImpl) processTask() bool {
 	return false
 }
 
-func (d docTaskProcessorImpl) handleError(ctx context.Context, task entity.DocumentLintTask, err error, lintTimeMs int64, dataHash string) {
+func (d docTaskProcessorImpl) handleError(ctx context.Context, task entity.DocumentLintTask, err error, lintTimeMs int64) {
 	log.Infof("Doc task %s failed with error: %s", task.Id, err)
 
 	docEnt := entity.LintedDocument{
@@ -100,7 +100,7 @@ func (d docTaskProcessorImpl) handleError(ctx context.Context, task entity.Docum
 		FileId:            task.FileId,
 		SpecificationType: task.APIType,
 		RulesetId:         task.RulesetId,
-		DataHash:          dataHash,
+		DataHash:          "", // set to empty string because in some error cases it is not available
 		LintStatus:        view.StatusError,
 		LintDetails:       err.Error(),
 	}
@@ -157,18 +157,18 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 
 	data, err := d.cl.GetDocumentRawData(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug)
 	if err != nil {
-		d.handleError(ctx, task, err, time.Since(start).Milliseconds(), "")
+		d.handleError(ctx, task, err, time.Since(start).Milliseconds())
 		return
 	}
 
 	if len(data) == 0 {
-		d.handleError(ctx, task, fmt.Errorf("document data is empty"), time.Since(start).Milliseconds(), "")
+		d.handleError(ctx, task, fmt.Errorf("document data is empty"), time.Since(start).Milliseconds())
 		return
 	}
 
 	tempDir := filepath.Join(os.TempDir(), task.Id)
 	if err := os.MkdirAll(tempDir, 0700); err != nil {
-		d.handleError(ctx, task, fmt.Errorf("error creating temp directory: %s", err), time.Since(start).Milliseconds(), "")
+		d.handleError(ctx, task, fmt.Errorf("error creating temp directory: %s", err), time.Since(start).Milliseconds())
 		return
 	}
 	defer os.RemoveAll(tempDir)
@@ -176,7 +176,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	fileName := "file" + ext // Some linters (e.g. Spectral) have a problem with some characters is file names, so generating a safe one.
 	filePath := filepath.Join(tempDir, fileName)
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
-		d.handleError(ctx, task, fmt.Errorf("error writing doc file: %s", err), time.Since(start).Milliseconds(), "")
+		d.handleError(ctx, task, fmt.Errorf("error writing doc file: %s", err), time.Since(start).Milliseconds())
 		return
 	}
 
@@ -184,14 +184,14 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 
 	rs, err := d.ruleSetRepository.GetRulesetWithData(ctx, task.RulesetId)
 	if err != nil {
-		d.handleError(ctx, task, fmt.Errorf("error getting ruleset: %s", err), time.Since(start).Milliseconds(), "")
+		d.handleError(ctx, task, fmt.Errorf("error getting ruleset: %s", err), time.Since(start).Milliseconds())
 		return
 	}
 	rsExt := filepath.Ext(rs.FileName)
 	rulesetFileName := "ruleset" + rsExt // Some linters (e.g. Spectral) have a problem with some characters is file names, so generating a safe one.
 	rulesetPath := filepath.Join(tempDir, rulesetFileName)
 	if err := os.WriteFile(rulesetPath, rs.Data, 0600); err != nil {
-		d.handleError(ctx, task, fmt.Errorf("error writing ruleset file: %s", err), time.Since(start).Milliseconds(), "")
+		d.handleError(ctx, task, fmt.Errorf("error writing ruleset file: %s", err), time.Since(start).Milliseconds())
 		return
 	}
 
@@ -285,11 +285,11 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 
 		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTime, verEnt, docEnt, lintFileResult, d.executorId)
 		if err != nil {
-			d.handleError(ctx, task, fmt.Errorf("failed to save lint result with error: %s", err), time.Since(start).Milliseconds(), "")
+			d.handleError(ctx, task, fmt.Errorf("failed to save lint result with error: %s", err), time.Since(start).Milliseconds())
 			return
 		}
 	} else {
-		d.handleError(ctx, task, fmt.Errorf("selected linter %s is not supported", task.Linter), time.Since(start).Milliseconds(), "")
+		d.handleError(ctx, task, fmt.Errorf("selected linter %s is not supported", task.Linter), time.Since(start).Milliseconds())
 		return
 	}
 }
