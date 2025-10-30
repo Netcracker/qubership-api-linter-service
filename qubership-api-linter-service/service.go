@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -124,7 +125,18 @@ func main() {
 	}
 
 	apihubClient := client.NewApihubClient(systemInfoService.GetAPIHubUrl(), systemInfoService.GetApihubAccessToken())
-	
+
+	/*
+		OPENAI_VERBOSE=false
+	*/
+	openaiApiKey := os.Getenv("OPENAI_API_KEY")
+	openaiProxy := os.Getenv("OPENAI_API_PROXY")
+	openaiModel := os.Getenv("OPENAI_MODEL")
+	oaiCl, err := client.NewOpenaiClient(openaiApiKey, openaiModel, openaiProxy)
+	if err != nil {
+		log.Panicf("Failed create openaiClient: %s", err.Error())
+	}
+
 	utils.SafeAsync(func() {
 		systemInfoService.SetProductionMode(apihubClient)
 	})
@@ -153,13 +165,27 @@ func main() {
 		log.Fatalf("Failed to create Spectral executor: %s", err.Error())
 	}
 
-	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, apihubClient, spectralExecutor, executorId)
+	localFileStoreStr := os.Getenv("LOCAL_FILE_STORE")
+	localFileStore := false
+	if localFileStoreStr != "" {
+		localFileStore, err = strconv.ParseBool(localFileStoreStr)
+		if err != nil {
+			log.Fatalf("Failed to parse LOCAL_FILE_STORE env: %s", err.Error())
+		}
+	}
+
+	problemsService := service.NewProblemsService(apihubClient, oaiCl, localFileStore)
+	scoringService := service.NewScoringService(apihubClient, oaiCl, problemsService, localFileStore)
+
+	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, apihubClient, spectralExecutor, executorId, scoringService)
 
 	validationService := service.NewValidationService(versionLintTaskRepository, versionResultRepository, lintResultRepository, ruleSetRepository, docLintTaskRepository, versionTaskProcessor, apihubClient, executorId)
 	publishEventListener := service.NewPublishEventListener(olricProvider, validationService)
 	rulesetService := service.NewRulesetService(ruleSetRepository)
 	cleanupService := service.NewCleanupService(cp)
 	authorizationService := service.NewAuthorizationService(apihubClient)
+
+	enhancementService := service.NewEnhancementService(apihubClient, oaiCl, problemsService, validationService, scoringService, spectralExecutor, ruleSetRepository, localFileStore)
 
 	validationController := controller.NewValidationController(validationService, authorizationService)
 
@@ -168,6 +194,10 @@ func main() {
 	rulesetController := controller.NewRulesetController(rulesetService, authorizationService)
 	cleanupController := controller.NewCleanupController(cleanupService, authorizationService, systemInfoService)
 	healthController := controller.NewHealthController(readyChan)
+
+	scoringController := controller.NewScoringController(scoringService, authorizationService)
+	problemsController := controller.NewProblemsController(problemsService, authorizationService)
+	enhancementController := controller.NewEnhancementController(enhancementService, authorizationService)
 
 	// Validate version
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", security.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
@@ -184,6 +214,19 @@ func main() {
 	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/data", security.NoSecure(rulesetController.GetRulesetData)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", security.Secure(rulesetController.GetRulesetActivationHistory)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", security.Secure(rulesetController.DeleteRuleset)).Methods(http.MethodDelete)
+
+	// Scoring
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring", security.Secure(scoringController.GetScoringData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/scoring", security.Secure(scoringController.GetEnhancedScoreData)).Methods(http.MethodGet)
+
+	// Problems
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/problems", security.Secure(problemsController.GetProblemsData)).Methods(http.MethodGet)
+
+	// Enhancement
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}", security.Secure(enhancementController.EnhanceDoc)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/status", security.Secure(enhancementController.GetStatus)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/raw", security.Secure(enhancementController.GetEnhancedDoc)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhanced/publish", security.Secure(enhancementController.PublishEnhancedDocs)).Methods(http.MethodPost)
 
 	// Test data cleanup
 	r.HandleFunc("/api/internal/clear/{testId}", security.Secure(cleanupController.ClearTestData)).Methods(http.MethodDelete)

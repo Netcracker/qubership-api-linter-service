@@ -22,7 +22,7 @@ type DocTaskProcessor interface {
 }
 
 func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRepository repository.RulesetRepository,
-	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, executorId string) DocTaskProcessor {
+	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, executorId string, scoringService ScoringService) DocTaskProcessor {
 	return &docTaskProcessorImpl{
 		docTaskRepo:         docTaskRepo,
 		ruleSetRepository:   ruleSetRepository,
@@ -30,6 +30,7 @@ func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRe
 		cl:                  cl,
 		spectralExecutor:    spectralExecutor,
 		executorId:          executorId,
+		scoringService:      scoringService,
 	}
 }
 
@@ -41,6 +42,8 @@ type docTaskProcessorImpl struct {
 	spectralExecutor    SpectralExecutor
 
 	executorId string
+
+	scoringService ScoringService
 }
 
 // TODO: maybe need some fast track
@@ -249,10 +252,22 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		if details != "" {
 			logDetails = fmt.Sprintf("details = %s, ", details)
 		}
-		log.Infof("Lint finished for doc %s (task id = %s), status = %s, %sProcessing time = %+vms", task.FileId, task.Id, status, logDetails, calcTime)
+		log.Infof("Lint finished for doc %s (task id = %s), status = %s, %s. Processing time = %+vms", task.FileId, task.Id, status, logDetails, calcTime)
 
 		LinterVersion := d.spectralExecutor.GetLinterVersion()
 		log.Tracef("Spectral linter version is %s", LinterVersion)
+
+		if status == view.StatusSuccess {
+			score, err := d.scoringService.GenRestDocScore(ctx, task, string(data), summary, report)
+			if err != nil {
+				//status = view.StatusError // no, do not fail the task
+				details = fmt.Sprintf("failed to generate score: %s", err)
+				log.Warnf("Failed to generate score for task id = %s: %s", task.Id, err)
+			} else {
+				// TODO: save scoring result!
+				log.Infof("Generated score for task id = %s, score = %+v", task.Id, score)
+			}
+		}
 
 		docEnt := entity.LintedDocument{
 			PackageId:         task.PackageId,

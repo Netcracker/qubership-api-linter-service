@@ -139,7 +139,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 			PackageId:         task.PackageId,
 			Version:           task.Version,
 			Revision:          task.Revision,
-			FileId:            doc.FieldId,
+			FileId:            doc.FileId,
 			FileSlug:          doc.Slug,
 			APIType:           doc.Type,
 			Linter:            lr.linter,

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
@@ -27,7 +29,7 @@ type ApihubClient interface {
 	GetVersion(ctx context.Context, id, version string) (*view.VersionContent, error)
 
 	GetVersionDocuments(ctx context.Context, packageId, version string) (*view.VersionDocuments, error)
-	GetDocumentRawData(ctx context.Context, packageId, version string, fileId string) ([]byte, error)
+	GetDocumentRawData(ctx context.Context, packageId, version string, fileSlug string) ([]byte, error)
 
 	CheckAuthToken(ctx context.Context, token string) (bool, error)
 	GetUserByPAT(ctx context.Context, token string) (*view.User, error)
@@ -36,6 +38,10 @@ type ApihubClient interface {
 	GetAvailableRoles(ctx context.Context, packageId string) (*view.PackageRoles, error)
 
 	GetSystemInfo(ctx context.Context) (*view.ApihubSystemInfo, error)
+
+	GetVersionSources(ctx context.Context, packageId, version string) (*view.PublishedVersionSourceDataConfig, error)
+
+	PublishVersion(ctx context.Context, config view.BuildConfig, src []byte) (string, error)
 }
 
 func NewApihubClient(apihubUrl, accessToken string) ApihubClient {
@@ -334,6 +340,64 @@ func (a apihubClientImpl) GetSystemInfo(ctx context.Context) (*view.ApihubSystem
 		return nil, err
 	}
 	return &config, nil
+}
+
+func (a apihubClientImpl) GetVersionSources(ctx context.Context, packageId, version string) (*view.PublishedVersionSourceDataConfig, error) {
+	req := a.makeRequest(ctx)
+	resp, err := req.Get(fmt.Sprintf("%s/api/v2/packages/%s/versions/%s/sourceData", a.apihubUrl, url.PathEscape(packageId), url.PathEscape(version)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get version sources: %s", err.Error())
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("failed to get version sources: status code %d", resp.StatusCode())
+	}
+	var src view.PublishedVersionSourceDataConfig
+	err = json.Unmarshal(resp.Body(), &src)
+	if err != nil {
+		return nil, err
+	}
+	return &src, nil
+}
+
+func (a apihubClientImpl) PublishVersion(ctx context.Context, config view.BuildConfig, src []byte) (string, error) {
+	req := a.makeRequest(ctx)
+
+	confBytes, err := json.Marshal(config)
+	if err != nil {
+		return "", err
+	}
+
+	var data []*resty.MultipartField
+	data = append(data, &resty.MultipartField{
+		Param:  "config",
+		Reader: bytes.NewReader(confBytes),
+	})
+	data = append(data, &resty.MultipartField{
+		Param:  "clientBuild",
+		Reader: strings.NewReader(strconv.FormatBool(false)),
+	})
+
+	if src != nil {
+		req.SetFileReader("sources", "sources.zip", bytes.NewReader(src))
+	}
+
+	req.SetMultipartFields(data...)
+
+	resp, err := req.Post(fmt.Sprintf("%s/api/v2/packages/%s/publish", a.apihubUrl, url.PathEscape(config.PackageId)))
+	if err != nil {
+		return "", fmt.Errorf("failed to build and publish package %s: %s", config.PackageId, err.Error())
+	}
+	if !(resp.StatusCode() == http.StatusAccepted || resp.StatusCode() == http.StatusNoContent) {
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return "", authErr
+		}
+		return "", fmt.Errorf("failed to build and publish package %s: status code = %d, body = %s", config.PackageId, resp.StatusCode(), string(resp.Body()))
+	}
+	var publishResponse view.PublishResponse
+	if err = json.Unmarshal(resp.Body(), &publishResponse); err != nil {
+		return "", err
+	}
+	return publishResponse.PublishId, nil
 }
 
 func (a apihubClientImpl) makeRequest(ctx context.Context) *resty.Request {

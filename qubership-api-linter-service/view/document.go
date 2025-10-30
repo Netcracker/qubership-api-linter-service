@@ -12,7 +12,7 @@ type VersionDocuments struct {
 	Documents []PublishedDocument `json:"documents"`
 }
 type PublishedDocument struct {
-	FieldId     string   `json:"fileId"`
+	FileId      string   `json:"fileId"`
 	Slug        string   `json:"slug"`
 	Type        ApiType  `json:"type"`
 	Format      string   `json:"format"`

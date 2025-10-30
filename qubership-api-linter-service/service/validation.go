@@ -23,7 +23,6 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
-	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
 	"net/http"
@@ -70,7 +69,7 @@ type validationServiceImpl struct {
 }
 
 func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
-	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
+	ver, rev, err := getVersionAndRevision(ctx, v.apihubClient, packageId, version)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +173,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 }
 
 func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
-	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
+	ver, rev, err := getVersionAndRevision(ctx, v.apihubClient, packageId, version)
 	if err != nil {
 		return nil, err
 	}
@@ -274,28 +273,6 @@ func makeSpectralSummary(summary map[string]interface{}) (*view.IssuesSummary, e
 	return &result, nil
 }
 
-func (v validationServiceImpl) getVersionAndRevision(ctx context.Context, packageId string, version string) (string, int, error) {
-	ver, rev, err := utils.SplitVersionRevision(version)
-	if err != nil {
-		return "", 0, err
-	}
-
-	if rev == 0 {
-		versionView, err := v.apihubClient.GetVersion(ctx, packageId, version)
-		if err != nil {
-			return "", 0, err
-		}
-		ver, rev, err = utils.SplitVersionRevision(versionView.Version)
-		if err != nil {
-			return "", 0, err
-		}
-		if rev == 0 {
-			return "", 0, fmt.Errorf("unable to identify latest revision for version %s", version)
-		}
-	}
-	return ver, rev, nil
-}
-
 func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error) {
 	pkg, err := v.apihubClient.GetPackageById(ctx, packageId)
 	if err != nil {
@@ -313,7 +290,7 @@ func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId st
 		}
 	}
 
-	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
+	ver, rev, err := getVersionAndRevision(ctx, v.apihubClient, packageId, version)
 	if err != nil {
 		return "", err
 	}
