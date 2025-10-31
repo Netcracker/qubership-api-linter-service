@@ -10,6 +10,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	log "github.com/sirupsen/logrus"
+	"net"
 	"net/http"
 	"time"
 )
@@ -21,6 +22,10 @@ type LLMClient interface {
 	UpdateGenerateProblemsPrompt(prompt string)
 	UpdateFixProblemsPrompt(prompt string)
 	UpdateModel(model string) error
+}
+
+func dialTimeout(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, 1800*time.Second)
 }
 
 func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, error) {
@@ -46,7 +51,7 @@ func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, erro
 	}
 
 	tr := http.Transport{
-
+		Dial:                  dialTimeout,
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 		TLSHandshakeTimeout:   time.Second * 1800,
 		IdleConnTimeout:       time.Second * 1800,
