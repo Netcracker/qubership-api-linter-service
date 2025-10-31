@@ -10,6 +10,9 @@ import (
 type ScoringController interface {
 	GetScoringData(w http.ResponseWriter, r *http.Request)
 	GetEnhancedScoreData(w http.ResponseWriter, r *http.Request)
+
+	RunScoring(w http.ResponseWriter, r *http.Request)
+	GetScoringStatus(w http.ResponseWriter, r *http.Request)
 }
 
 func NewScoringController(scoringService service.ScoringService,
@@ -23,6 +26,58 @@ func NewScoringController(scoringService service.ScoringService,
 type scoringControllerImpl struct {
 	scoringService       service.ScoringService
 	authorizationService service.AuthorizationService
+}
+
+func (s scoringControllerImpl) RunScoring(w http.ResponseWriter, r *http.Request) {
+
+	/*packageId := getStringParam(r, "packageId")
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := s.authorizationService.HasReadPackagePermission(ctx, packageId)
+	if err != nil {
+		respondWithError(w, "Failed to check permissions", err)
+		return
+	}
+	if !sufficientPrivileges {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusForbidden,
+			Code:    exception.InsufficientPrivileges,
+			Message: exception.InsufficientPrivilegesMsg,
+		})
+		return
+	}
+
+	versionName, err := getUnescapedStringParam(r, "version")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "version"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	slug, err := getUnescapedStringParam(r, "slug")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "version"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	s.scoringService.MakeRestDocScore()*/
+
+}
+
+func (s scoringControllerImpl) GetScoringStatus(w http.ResponseWriter, r *http.Request) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (s scoringControllerImpl) GetScoringData(w http.ResponseWriter, r *http.Request) {

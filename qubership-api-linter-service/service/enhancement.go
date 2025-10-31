@@ -23,6 +23,8 @@ type EnhancementService interface {
 	GetEnhanceStatus(ctx context.Context, packageId string, version string, slug string) (*view.EnhancementStatusResponse, error)
 	GetEnhancedDoc(ctx context.Context, packageId string, version string, slug string) (string, error)
 
+	UpdateEnhancedDoc(ctx context.Context, packageId string, version string, slug string, data string) error
+
 	PublishEnhancedDocs(ctx context.Context, packageId string, version string, req view.PublishEnhancementRequest) (*view.PublishResponse, error)
 }
 
@@ -211,6 +213,18 @@ func (e enhancementServiceImpl) GetEnhancedDoc(ctx context.Context, packageId st
 	key := packageId + "|" + fmt.Sprintf("%s@%d", ver, rev) + "|" + slug
 
 	return e.enhancedDocs[key], nil
+}
+
+func (e enhancementServiceImpl) UpdateEnhancedDoc(ctx context.Context, packageId string, version string, slug string, data string) error {
+	ver, rev, err := getVersionAndRevision(ctx, e.apihubClient, packageId, version)
+	if err != nil {
+		return err
+	}
+
+	key := packageId + "|" + fmt.Sprintf("%s@%d", ver, rev) + "|" + slug
+
+	e.enhancedDocs[key] = data
+	return nil
 }
 
 func (e enhancementServiceImpl) PublishEnhancedDocs(ctx context.Context, packageId string, version string, req view.PublishEnhancementRequest) (*view.PublishResponse, error) {

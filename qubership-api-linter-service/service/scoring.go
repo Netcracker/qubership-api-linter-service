@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Netcracker/qubership-api-linter-service/client"
-	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	log "github.com/sirupsen/logrus"
 	"os"
@@ -14,7 +13,7 @@ import (
 )
 
 type ScoringService interface {
-	GenRestDocScore(ctx context.Context, task entity.DocumentLintTask, docData string, lintSummary view.SpectralResultSummary, lintReport []interface{}) (*view.Score, error)
+	MakeRestDocScore(ctx context.Context, packageId string, version string, slug string, docData string, lintSummary view.SpectralResultSummary, lintReport []interface{}) (*view.Score, error)
 	GetRestDocScoringData(ctx context.Context, packageId string, version string, slug string) (*view.Score, error)
 	GenEnhancedRestDocScore(ctx context.Context, packageId string, version string, slug string, docData string, lintSummary view.IssuesSummary) (*view.Score, error)
 	GetEnhancedRestDocScoringData(ctx context.Context, packageId string, version string, slug string) (*view.Score, error)
@@ -84,8 +83,14 @@ func (s scoringServiceImpl) GetRestDocScoringData(ctx context.Context, packageId
 	return &res, nil
 }
 
-func (s scoringServiceImpl) GenRestDocScore(ctx context.Context, task entity.DocumentLintTask, docData string, lintSummary view.SpectralResultSummary, lintReport []interface{}) (*view.Score, error) {
-	log.Infof("Run scoring for doc %s", task.FileId)
+func (s scoringServiceImpl) MakeRestDocScore(ctx context.Context, packageId string, version string, slug string, docData string, lintSummary view.SpectralResultSummary, lintReport []interface{}) (*view.Score, error) {
+	log.Infof("Run scoring for doc %s", slug)
+
+	ver, rev, err := getVersionAndRevision(ctx, s.apihubClient, packageId, version)
+	if err != nil {
+		return nil, err
+	}
+
 	var result view.Score
 
 	lintGrade := view.Good
@@ -101,7 +106,7 @@ func (s scoringServiceImpl) GenRestDocScore(ctx context.Context, task entity.Doc
 		Value: lintGrade,
 	})
 
-	problems, err := s.problemsService.GenTaskRestDocProblems(ctx, task.PackageId, task.Version, task.Revision, task.FileSlug, docData)
+	problems, err := s.problemsService.GenTaskRestDocProblems(ctx, packageId, ver, rev, slug, docData)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +136,7 @@ func (s scoringServiceImpl) GenRestDocScore(ctx context.Context, task entity.Doc
 	result.OverallScore = totalGrade
 
 	if s.localFileStore {
-		err = saveDebugData(task, docData, lintSummary, lintReport, problems, "")
+		err = saveDebugData(docData, lintSummary, lintReport, problems)
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +144,7 @@ func (s scoringServiceImpl) GenRestDocScore(ctx context.Context, task entity.Doc
 
 	// TODO: bwc problems??
 
-	key := task.PackageId + "|" + fmt.Sprintf("%s@%d", task.Version, task.Revision) + "|" + task.FileSlug
+	key := packageId + "|" + fmt.Sprintf("%s@%d", ver, rev) + "|" + slug
 
 	s.storage[key] = result
 	s.saveStorage()
@@ -147,7 +152,7 @@ func (s scoringServiceImpl) GenRestDocScore(ctx context.Context, task entity.Doc
 	return &result, nil
 }
 
-func saveDebugData(task entity.DocumentLintTask, docData string, lintSummary view.SpectralResultSummary, lintReport []interface{}, problems []view.AIApiDocCatProblem, fixedDocs string) error {
+func saveDebugData(docData string, lintSummary view.SpectralResultSummary, lintReport []interface{}, problems []view.AIApiDocCatProblem) error {
 	// Create directory name using current date
 	currentTime := time.Now()
 	dirName := currentTime.Format("2006-01-02_15_03_04")
@@ -156,16 +161,7 @@ func saveDebugData(task entity.DocumentLintTask, docData string, lintSummary vie
 	if err := os.MkdirAll(dirName, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %v", err)
 	}
-
-	// Save task data
-	taskData, err := json.MarshalIndent(task, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal task data: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dirName, "task.json"), taskData, 0644); err != nil {
-		return fmt.Errorf("failed to write task file: %v", err)
-	}
-
+	
 	// Save document data
 	if err := os.WriteFile(filepath.Join(dirName, "docData.txt"), []byte(docData), 0644); err != nil {
 		return fmt.Errorf("failed to write docData file: %v", err)
@@ -196,11 +192,6 @@ func saveDebugData(task entity.DocumentLintTask, docData string, lintSummary vie
 	}
 	if err := os.WriteFile(filepath.Join(dirName, "problems.json"), problemsData, 0644); err != nil {
 		return fmt.Errorf("failed to write problems file: %v", err)
-	}
-
-	// Save fixed documents
-	if err := os.WriteFile(filepath.Join(dirName, "fixedDocs.txt"), []byte(fixedDocs), 0644); err != nil {
-		return fmt.Errorf("failed to write fixedDocs file: %v", err)
 	}
 
 	return nil

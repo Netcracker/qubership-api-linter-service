@@ -198,6 +198,7 @@ func main() {
 	scoringController := controller.NewScoringController(scoringService, authorizationService)
 	problemsController := controller.NewProblemsController(problemsService, authorizationService)
 	enhancementController := controller.NewEnhancementController(enhancementService, authorizationService)
+	llmTuningController := controller.NewLLMTuningController(oaiCl, authorizationService)
 
 	// Validate version
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", security.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
@@ -217,15 +218,24 @@ func main() {
 
 	// Scoring
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring", security.Secure(scoringController.GetScoringData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring", security.Secure(scoringController.GetScoringData)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring/status", security.Secure(scoringController.GetScoringData)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/scoring", security.Secure(scoringController.GetEnhancedScoreData)).Methods(http.MethodGet)
 
 	// Problems
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/problems", security.Secure(problemsController.GetProblemsData)).Methods(http.MethodGet)
 
+	r.HandleFunc("/api/v1/llm/prompts/generateProblems", security.Secure(llmTuningController.UpdateGenerateProblemsPrompt)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/llm/prompts/fixProblems", security.Secure(llmTuningController.UpdateFixProblemsPrompt)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/llm/model", security.Secure(llmTuningController.UpdateModel)).Methods(http.MethodPost)
+
+	// TODO: Upload temporary state via API???
+
 	// Enhancement
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}", security.Secure(enhancementController.EnhanceDoc)).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/status", security.Secure(enhancementController.GetStatus)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/raw", security.Secure(enhancementController.GetEnhancedDoc)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/raw", security.Secure(enhancementController.UpdateEnhancedDoc)).Methods(http.MethodPut)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhanced/publish", security.Secure(enhancementController.PublishEnhancedDocs)).Methods(http.MethodPost)
 
 	// Test data cleanup

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"github.com/Netcracker/qubership-api-linter-service/view"
@@ -9,6 +10,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	log "github.com/sirupsen/logrus"
+	"net/http"
 	"time"
 )
 
@@ -16,6 +18,9 @@ type LLMClient interface {
 	GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, error)
 	CategorizeProblems(ctx context.Context, problems []view.AIApiDocProblem) ([]view.AIApiDocCatProblem, error)
 	FixProblems(ctx context.Context, docStr string, problems []view.AIApiDocCatProblem, lintReport []view.ValidationIssue) (string, error)
+	UpdateGenerateProblemsPrompt(prompt string)
+	UpdateFixProblemsPrompt(prompt string)
+	UpdateModel(model string) error
 }
 
 func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, error) {
@@ -40,25 +45,31 @@ func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, erro
 		openAIModel = openai.ChatModelGPT5
 	}
 
+	tr := http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	cl := http.Client{Transport: &tr, Timeout: time.Second * 60}
+
+	opts = append(opts, option.WithHTTPClient(&cl))
+
 	return &OAIClientImpl{
-		client: openai.NewClient(opts...),
-		model:  openAIModel,
+		client:                 openai.NewClient(opts...),
+		model:                  openAIModel,
+		generateProblemsPrompt: defaultGenerateProblemsPrompt,
+		fixProblemsPrompt:      defaultFixProblemsPrompt,
 	}, nil
 }
 
 type OAIClientImpl struct {
 	client openai.Client
 	model  openai.ChatModel
+
+	generateProblemsPrompt string
+	fixProblemsPrompt      string
 }
 
 var IAProblemsOutputResponseSchema = GenerateSchema[view.IAProblemsOutput]()
 var IACatProblemsOutputResponseSchema = GenerateSchema[view.AIApiDocCatProblemsOutput]()
 
-func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, error) {
-	start := time.Now()
-	// TODO: parametrization?
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(`You need to analyze the following OpenApi document by the following criteria:
+const defaultGenerateProblemsPrompt = `You need to analyze the following OpenApi document by the following criteria:
 1. Clarity and Completeness of Descriptions
 What it measures: The presence, quality, and usefulness of the description fields for paths, operations, parameters, and response schemas.
 LLM Analysis: The LLM can check for the existence of descriptions and then evaluate their quality. A good description explains the "why," not just the "what." For example, "userId (string)" is poor, while "userId (string): The unique identifier of the user, retrieved from the authentication apiKey" is excellent.
@@ -97,7 +108,13 @@ LLM Analysis: The LLM can identify if the API is versioned (e.g., through the pa
 Scoring: A score based on the presence of a clear versioning strategy and the proper use of deprecation markers with informative guidance.
 
 Severity in deprecated operations should not be higher than warning.
-List identified issues in json format. Avoid any other output.`),
+List identified issues in json format. Avoid any other output.`
+
+func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, error) {
+	start := time.Now()
+	// TODO: parametrization?
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(defaultGenerateProblemsPrompt),
 		openai.UserMessage(docStr),
 	}
 
@@ -171,6 +188,10 @@ func (l OAIClientImpl) CategorizeProblems(ctx context.Context, problems []view.A
 	return result.Problems, nil
 }
 
+const defaultFixProblemsPrompt = `You need to enhance the specification and fix the following problems. Consider list of problems and linter report. 
+			Do not rename tags. Do not change paths and parameters.
+			Return only updated specification (with changes). Avoid any other output.`
+
 func (l OAIClientImpl) FixProblems(ctx context.Context, docStr string, problems []view.AIApiDocCatProblem, lintReport []view.ValidationIssue) (string, error) {
 	problemsBytes, err := json.MarshalIndent(problems, "", "    ")
 	if err != nil {
@@ -183,9 +204,7 @@ func (l OAIClientImpl) FixProblems(ctx context.Context, docStr string, problems 
 	}
 	// TODO: parametrization?
 	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(`You need to enhance the specification and fix the following problems. Consider list of problems and linter report. 
-			Do not rename tags. Do not change paths and parameters.
-			Return only updated specification (with changes). Avoid any other output.`),
+		openai.SystemMessage(defaultFixProblemsPrompt),
 
 		openai.UserMessage("problems: \n" + string(problemsBytes)),
 		openai.UserMessage("linter report: \n" + string(linterReportBytes)),
@@ -214,4 +233,17 @@ func GenerateSchema[T any]() interface{} {
 	var v T
 	schema := reflector.Reflect(v)
 	return schema
+}
+
+func (l OAIClientImpl) UpdateGenerateProblemsPrompt(prompt string) {
+	l.generateProblemsPrompt = prompt
+}
+
+func (l OAIClientImpl) UpdateFixProblemsPrompt(prompt string) {
+	l.fixProblemsPrompt = prompt
+}
+
+func (l OAIClientImpl) UpdateModel(model string) error {
+	l.model = model
+	return nil
 }

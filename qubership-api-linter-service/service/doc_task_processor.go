@@ -258,7 +258,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		log.Tracef("Spectral linter version is %s", LinterVersion)
 
 		if status == view.StatusSuccess {
-			score, err := d.scoringService.GenRestDocScore(ctx, task, string(data), summary, report)
+			score, err := d.scoringService.MakeRestDocScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, string(data), summary, report)
 			if err != nil {
 				//status = view.StatusError // no, do not fail the task
 				details = fmt.Sprintf("failed to generate score: %s", err)
