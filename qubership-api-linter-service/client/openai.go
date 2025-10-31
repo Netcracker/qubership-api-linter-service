@@ -45,8 +45,15 @@ func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, erro
 		openAIModel = openai.ChatModelGPT5
 	}
 
-	tr := http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-	cl := http.Client{Transport: &tr, Timeout: time.Second * 60}
+	tr := http.Transport{
+
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		TLSHandshakeTimeout:   time.Second * 1800,
+		IdleConnTimeout:       time.Second * 1800,
+		ResponseHeaderTimeout: time.Second * 1800,
+		ExpectContinueTimeout: time.Second * 1800,
+	}
+	cl := http.Client{Transport: &tr, Timeout: time.Second * 1800}
 
 	opts = append(opts, option.WithHTTPClient(&cl))
 

@@ -4,6 +4,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/service"
+	"github.com/Netcracker/qubership-api-linter-service/view"
 	"net/http"
 )
 
@@ -30,7 +31,7 @@ type scoringControllerImpl struct {
 
 func (s scoringControllerImpl) RunScoring(w http.ResponseWriter, r *http.Request) {
 
-	/*packageId := getStringParam(r, "packageId")
+	packageId := getStringParam(r, "packageId")
 
 	ctx := secctx.MakeUserContext(r)
 	sufficientPrivileges, err := s.authorizationService.HasReadPackagePermission(ctx, packageId)
@@ -71,8 +72,7 @@ func (s scoringControllerImpl) RunScoring(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	s.scoringService.MakeRestDocScore()*/
-
+	s.scoringService.MakeRestDocScore(ctx, packageId, versionName, slug, "", view.SpectralResultSummary{}, nil) // TODO
 }
 
 func (s scoringControllerImpl) GetScoringStatus(w http.ResponseWriter, r *http.Request) {
