@@ -6,15 +6,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"os"
-	"path/filepath"
-	"time"
 )
 
 type EnhancementService interface {
@@ -164,7 +165,7 @@ func (e enhancementServiceImpl) EnhanceDoc(ctx context.Context, packageId string
 			return
 		}
 
-		_, err = e.scoringService.GenEnhancedRestDocScore(asyncContext, packageId, version, slug, fixedDoc, *docSummary)
+		_, err = e.scoringService.MakeEnhancedRestDocScore(asyncContext, packageId, version, slug, fixedDoc, *docSummary)
 		if err != nil {
 			log.Errorf("Failed to generate enhanced doc score")
 			e.status[key] = view.EnhancementStatusResponse{
@@ -322,6 +323,10 @@ func (e enhancementServiceImpl) PublishEnhancedDocs(ctx context.Context, package
 	src.Config.PreviousVersion = req.PreviousVersion
 	src.Config.Status = string(req.Status)
 	src.Config.Metadata.VersionLabels = req.Labels
+	src.Config.MigrationBuild = false
+	src.Config.MigrationId = ""
+	src.Config.NoChangelog = false
+	src.Config.PublishedAt = time.Time{}
 
 	buildId, err := e.apihubClient.PublishVersion(ctx, src.Config, data)
 	if err != nil {

@@ -5,14 +5,15 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"net"
+	"net/http"
+	"time"
+
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"net/http"
-	"time"
 )
 
 type LLMClient interface {
@@ -93,33 +94,22 @@ Scoring: Score based on the coverage of examples across the API and the contextu
 3. Logical Consistency and Naming Conventions
 What it measures: The consistency in naming paths, parameters, and schema properties, and the logical grouping of resources.
 LLM Analysis: The LLM can detect inconsistencies like mixed naming schemes (e.g., /getUsers vs. /products/{id}), or incoherent pluralization (e.g., /user and /users in the same API). It can also assess if resource hierarchies make sense (e.g., /orgs/{org_id}/users/{user_id}/posts is logical).
-Scoring: A score reflecting the uniformity of naming and the logical flow of resource relationships.
+Scoring: A score reflecting the uniformity of naming and the logical flow of resource relationships. Severity should not be higher than warning.
 4. Error Handling Comprehensiveness
 What it measures: The extent to which the API defines non-success HTTP status codes (4xx, 5xx) and their corresponding error response schemas.
 LLM Analysis: The LLM can check if operations define common error responses like 400 Bad Request, 401 Unauthorized, 404 Not Found, and 500 Internal Server Error. A higher score is given if these responses have a structured schema (e.g., using a Error component) with descriptive fields like code, message, and details.
 Scoring: A score based on the coverage of expected error codes across operations and the richness of the defined error schemas.
-5. Adherence to RESTful Principles
-What it measures: How well the API design follows standard REST conventions regarding HTTP verb usage, statelessness, and resource-based URLs.
-LLM Analysis: The LLM can evaluate if the correct HTTP verbs are used for actions (e.g., GET for retrieval, POST for creation, PUT for full updates, DELETE for deletion). It can identify non-RESTful patterns, like using GET for a destructive action or overusing POST where PUT/PATCH would be more appropriate.
-Scoring: A score based on the conformity of operation definitions to RESTful best practices.
-6. Schema Reusability and Structure
+5. Schema Reusability and Structure
 What it measures: The effective use of OpenAPI components ($ref) to avoid duplication and promote a consistent data model.
 LLM Analysis: The LLM can analyze the components/schemas section to identify duplicated structures that should be refactored into a shared definition. It can assess if the schemas are well-normalized and if common objects (like User, Error, PaginationMetadata) are defined once and reused.
 Scoring: A score based on the ratio of reused components ($ref) to inline schemas and the level of duplication detected. Severity should not be higher than warning.
-7. Security Schema Clarity
+6. Security Schema Clarity
 What it measures: The clarity and detail provided in the components/securitySchemes definition.
 LLM Analysis: Beyond just having a security scheme defined (e.g., type: http, scheme: bearer), the LLM can evaluate the quality of the description field. A high-quality description explains the apiKey format, how to obtain it (e.g., link to an auth server), and any required scopes or flows.
 Scoring: A score based on the presence and comprehensiveness of the security scheme descriptions.
-8. Parameter Design Quality
-What it measures: The appropriateness of parameter locations (path, query, header) and their definitions.
-LLM Analysis: The LLM can check if required identifiers are correctly placed in the path, if filters and pagination parameters are in query, and if authentication tokens are in header. It can also flag operations with excessively complex query parameters that might be better served by a POST with a request body.
-Scoring: A score based on the logical placement of parameters and adherence to common conventions.
-9. API Evolution and Future-Proofing
-What it measures: The use of versioning strategies and deprecation notices.
-LLM Analysis: The LLM can identify if the API is versioned (e.g., through the path /v1/users or a header) and check for the use of the deprecated: true flag on operations. Furthermore, it can analyze the description of a deprecated operation to see if it provides a migration path or an end-of-life date.
-Scoring: A score based on the presence of a clear versioning strategy and the proper use of deprecation markers with informative guidance.
 
 Severity in deprecated operations should not be higher than warning.
+When determining the entity name, use TMF SID and TMF Open API notation, selecting names that align with these specifications when applicable.
 List identified issues in json format. Avoid any other output.`
 
 func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, error) {
@@ -200,9 +190,10 @@ func (l OAIClientImpl) CategorizeProblems(ctx context.Context, problems []view.A
 	return result.Problems, nil
 }
 
-const defaultFixProblemsPrompt = `You need to enhance the specification and fix the following problems. Consider list of problems and linter report. 
-			Do not rename tags. Do not change paths and parameters.
-			Return only updated specification (with changes). Avoid any other output.`
+const defaultFixProblemsPrompt = `You need to enhance the specification and fix the following problems. Consider list of problems and linter report.
+Do not rename tags. Do not change paths and parameters. Do not introduce breaking changes.
+Use TMF SID and TMF Open API notation, selecting names that align with these specifications when applicable.
+Return only updated specification (with changes). Avoid any other output.`
 
 func (l OAIClientImpl) FixProblems(ctx context.Context, docStr string, problems []view.AIApiDocCatProblem, lintReport []view.ValidationIssue) (string, error) {
 	problemsBytes, err := json.MarshalIndent(problems, "", "    ")

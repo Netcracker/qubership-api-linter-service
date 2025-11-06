@@ -4,6 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sync/atomic"
+	"time"
+
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
@@ -11,10 +16,6 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	log "github.com/sirupsen/logrus"
-	"os"
-	"path/filepath"
-	"sync/atomic"
-	"time"
 )
 
 type DocTaskProcessor interface {
@@ -258,7 +259,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		log.Tracef("Spectral linter version is %s", LinterVersion)
 
 		if status == view.StatusSuccess {
-			score, err := d.scoringService.MakeRestDocScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, string(data), summary, report)
+			score, err := d.scoringService.MakeRestDocScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, string(data), summary)
 			if err != nil {
 				//status = view.StatusError // no, do not fail the task
 				details = fmt.Sprintf("failed to generate score: %s", err)

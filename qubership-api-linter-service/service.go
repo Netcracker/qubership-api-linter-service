@@ -195,7 +195,7 @@ func main() {
 	cleanupController := controller.NewCleanupController(cleanupService, authorizationService, systemInfoService)
 	healthController := controller.NewHealthController(readyChan)
 
-	scoringController := controller.NewScoringController(scoringService, authorizationService)
+	scoringController := controller.NewScoringController(scoringService, validationService, authorizationService)
 	problemsController := controller.NewProblemsController(problemsService, authorizationService)
 	enhancementController := controller.NewEnhancementController(enhancementService, authorizationService)
 	llmTuningController := controller.NewLLMTuningController(oaiCl, authorizationService)
@@ -218,8 +218,8 @@ func main() {
 
 	// Scoring
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring", security.Secure(scoringController.GetScoringData)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring", security.Secure(scoringController.GetScoringData)).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring/status", security.Secure(scoringController.GetScoringData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/scoring", security.Secure(scoringController.RunScoring)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/scoring/status", security.Secure(scoringController.GetScoringStatus)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/scoring", security.Secure(scoringController.GetEnhancedScoreData)).Methods(http.MethodGet)
 
 	// Problems
