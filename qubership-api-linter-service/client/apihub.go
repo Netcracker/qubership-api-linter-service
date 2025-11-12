@@ -31,7 +31,10 @@ type ApihubClient interface {
 	ListPackageVersions(ctx context.Context, packageId string) ([]view.PackageVersion, error)
 
 	GetVersionDocuments(ctx context.Context, packageId, version string) (*view.VersionDocuments, error)
+	GetDocumentDetails(ctx context.Context, packageId, version string, slug string) (*view.PublishedDocument, error)
 	GetDocumentRawData(ctx context.Context, packageId, version string, fileSlug string) ([]byte, error)
+
+	GetOperationWithData(ctx context.Context, packageId, version string, apiType view.OpApiType, operationId string) (*view.Operation, error)
 
 	CheckAuthToken(ctx context.Context, token string) (bool, error)
 	GetUserByPAT(ctx context.Context, token string) (*view.User, error)
@@ -70,6 +73,23 @@ type apihubClientImpl struct {
 	accessToken string
 	apiHubHost  string
 	client      *resty.Client
+}
+
+func (a apihubClientImpl) GetOperationWithData(ctx context.Context, packageId, version string, apiType view.OpApiType, operationId string) (*view.Operation, error) {
+	req := a.makeRequest(ctx)
+	resp, err := req.Get(fmt.Sprintf("%s/api/v2/packages/%s/versions/%s/%s/operations/%s", a.apihubUrl, url.PathEscape(packageId), url.PathEscape(version), apiType, url.PathEscape(operationId)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get operation with data for package %s, version %s, operation id %s: %s", packageId, version, operationId, err.Error())
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("failed to get operation with data for package %s, version %s, operation id %s: status code %d %v", packageId, version, operationId, resp.StatusCode(), resp.Body())
+	}
+	var operation view.Operation
+	err = json.Unmarshal(resp.Body(), &operation)
+	if err != nil {
+		return nil, err
+	}
+	return &operation, nil
 }
 
 func (a apihubClientImpl) GetApiKeyByKey(apiKey string) (*view.ApihubApiKeyView, error) {
@@ -318,6 +338,29 @@ func (a apihubClientImpl) GetVersionDocuments(ctx context.Context, packageId, ve
 		return nil, err
 	}
 	return &versionDocuments, nil
+}
+
+func (a apihubClientImpl) GetDocumentDetails(ctx context.Context, packageId, version string, slug string) (*view.PublishedDocument, error) {
+	req := a.makeRequest(ctx)
+	resp, err := req.Get(fmt.Sprintf("%s/api/v3/packages/%s/versions/%s/documents/%s", a.apihubUrl, url.PathEscape(packageId), url.PathEscape(version), url.PathEscape(slug)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get document details for package %s, version %s, slug %s: %s", packageId, version, slug, err.Error())
+	}
+	if resp.StatusCode() != http.StatusOK {
+		if resp.StatusCode() == http.StatusNotFound {
+			return nil, nil
+		}
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return nil, authErr
+		}
+		return nil, fmt.Errorf("failed to get version documents. version - %s for id %s: status code %d %v", version, packageId, resp.StatusCode(), resp.Body())
+	}
+	var publishedDocument view.PublishedDocument
+	err = json.Unmarshal(resp.Body(), &publishedDocument)
+	if err != nil {
+		return nil, err
+	}
+	return &publishedDocument, nil
 }
 
 func (a apihubClientImpl) GetDocumentRawData(ctx context.Context, packageId, version string, fileSlug string) ([]byte, error) {

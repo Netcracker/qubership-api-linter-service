@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -119,7 +120,7 @@ func (d docTaskProcessorImpl) handleError(ctx context.Context, task entity.Docum
 	}
 
 	err = d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusError, err.Error(),
-		lintTimeMs, verEnt, docEnt, nil, d.executorId)
+		lintTimeMs, verEnt, docEnt, nil, nil, nil, d.executorId)
 	if err != nil {
 		log.Errorf("Handle error for doc task %s failed: unable to save lint result: %s", task.Id, err)
 	}
@@ -304,7 +305,18 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			}
 		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTime, verEnt, docEnt, lintFileResult, d.executorId)
+		// Process operations
+		operations, operationResults, opErr := d.processDocOperations(ctx, task, tempDir, rulesetPath, LinterVersion)
+		if opErr != nil {
+			log.Errorf("Error processing operations for doc task %s: %s", task.Id, opErr)
+			status = view.StatusError
+			details = fmt.Sprintf("error processing operations: %s", opErr)
+			lintFileResult = nil
+			operations = nil
+			operationResults = nil
+		}
+
+		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTime, verEnt, docEnt, lintFileResult, operations, operationResults, d.executorId)
 		if err != nil {
 			d.handleError(ctx, task, fmt.Errorf("failed to save lint result with error: %s", err), time.Since(start).Milliseconds())
 			return
@@ -313,6 +325,126 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		d.handleError(ctx, task, fmt.Errorf("selected linter %s is not supported", task.Linter), time.Since(start).Milliseconds())
 		return
 	}
+}
+
+func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task entity.DocumentLintTask, tempDir string, rulesetPath string, linterVersion string) ([]entity.LintedOperation, []*entity.LintOperationResult, error) {
+	operations := make([]entity.LintedOperation, 0)
+	operationResults := make([]*entity.LintOperationResult, 0)
+
+	// Get document details to retrieve operations list
+	docDetails, err := d.cl.GetDocumentDetails(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug)
+	if err != nil {
+		return operations, operationResults, fmt.Errorf("failed to get document details: %w", err)
+	}
+	if docDetails == nil {
+		return operations, operationResults, fmt.Errorf("document details not found")
+	}
+
+	for _, op := range docDetails.Operations {
+		opStatus := view.StatusSuccess
+		opDetails := ""
+		var opResult []byte
+		var opReport []interface{}
+		var opSummary view.SpectralResultSummary
+		var opSumAsMap map[string]interface{}
+
+		// Get operation with data
+		operation, err := d.cl.GetOperationWithData(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), op.ApiType, op.OperationId)
+		if err != nil {
+			log.Warnf("Failed to get operation %s data (task id = %s): %s", op.OperationId, task.Id, err)
+			opStatus = view.StatusError
+			opDetails = fmt.Sprintf("error getting operation data: %s", err)
+		} else if operation == nil {
+			log.Warnf("Operation %s not found (task id = %s)", op.OperationId, task.Id)
+			opStatus = view.StatusError
+			opDetails = "operation not found"
+		} else {
+			// Write operation data to temp file
+			// Sanitize operation ID for file name (replace invalid characters)
+			safeOpId := strings.ReplaceAll(op.OperationId, "/", "_")
+			safeOpId = strings.ReplaceAll(safeOpId, "\\", "_")
+			safeOpId = strings.ReplaceAll(safeOpId, ":", "_")
+			opFileName := fmt.Sprintf("operation_%s.json", safeOpId)
+			opFilePath := filepath.Join(tempDir, opFileName)
+			if err := os.WriteFile(opFilePath, operation.Data, 0600); err != nil {
+				log.Warnf("Failed to write operation %s file (task id = %s): %s", op.OperationId, task.Id, err)
+				opStatus = view.StatusError
+				opDetails = fmt.Sprintf("error writing operation file: %s", err)
+			} else {
+				// Run spectral on operation
+				if task.Linter == view.SpectralLinter {
+					log.Infof("Processing operation %s (task id = %s) for package %s, version %s@%d by spectral", op.OperationId, task.Id, task.PackageId, task.Version, task.Revision)
+					resultPath, _, err := d.spectralExecutor.LintLocalDoc(opFilePath, rulesetPath)
+					if err != nil {
+						opStatus = view.StatusError
+						opDetails = fmt.Sprintf("error linting operation with spectral: %s", err)
+					} else {
+						opResult, err = os.ReadFile(resultPath)
+						if err != nil {
+							opStatus = view.StatusError
+							opDetails = fmt.Sprintf("error reading operation result file: %s", err)
+						} else {
+							err = json.Unmarshal(opResult, &opReport)
+							if err != nil {
+								opStatus = view.StatusError
+								opDetails = fmt.Sprintf("error unmarshalling operation result: %s", err)
+							} else {
+								opSummary = calculateSpectralSummary(opReport)
+								sumJson, err := json.Marshal(opSummary)
+								if err != nil {
+									opStatus = view.StatusError
+									opDetails = fmt.Sprintf("error marshaling operation summary: %s", err)
+								} else {
+									err = json.Unmarshal(sumJson, &opSumAsMap)
+									if err != nil {
+										opStatus = view.StatusError
+										opDetails = fmt.Sprintf("error unmarshaling operation summary: %s", err)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Create operation hash
+		opHash := op.DataHash
+		// TODO not sure if required
+		if opHash == "" && operation != nil {
+			opHash = utils.CreateSHA256Hash(operation.Data)
+		}
+
+		// Create LintedOperation entity
+		opEnt := entity.LintedOperation{
+			PackageId:         task.PackageId,
+			Version:           task.Version,
+			Revision:          task.Revision,
+			FileId:            task.FileId,
+			OperationId:       op.OperationId,
+			Slug:              task.FileSlug,
+			SpecificationType: task.APIType,
+			RulesetId:         task.RulesetId,
+			DataHash:          opHash,
+			LintStatus:        opStatus,
+			LintDetails:       opDetails,
+		}
+		operations = append(operations, opEnt)
+
+		// Create LintOperationResult if successful
+		if opStatus == view.StatusSuccess && opResult != nil {
+			opResultEnt := &entity.LintOperationResult{
+				DataHash:      opHash,
+				RulesetId:     task.RulesetId,
+				LinterVersion: linterVersion,
+				Data:          opResult,
+				Summary:       opSumAsMap,
+			}
+			operationResults = append(operationResults, opResultEnt)
+		}
+	}
+
+	return operations, operationResults, nil
 }
 
 // TODO: temp! just for testing!

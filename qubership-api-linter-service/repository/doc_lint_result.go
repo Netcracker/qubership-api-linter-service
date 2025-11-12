@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+
 	"github.com/Netcracker/qubership-api-linter-service/db"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/view"
@@ -11,7 +12,7 @@ import (
 
 type DocResultRepository interface {
 	LintResultExists(ctx context.Context, dataHash string) (bool, error)
-	SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error
+	SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, operations []entity.LintedOperation, operationResults []*entity.LintOperationResult, executorId string) error
 }
 
 func NewDocResultRepository(cp db.ConnectionProvider) DocResultRepository {
@@ -28,7 +29,7 @@ func (d docResultRepositoryImpl) LintResultExists(ctx context.Context, dataHash 
 }
 
 func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64,
-	version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error {
+	version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, operations []entity.LintedOperation, operationResults []*entity.LintOperationResult, executorId string) error {
 	return d.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
 
 		var docLintTask *entity.DocumentLintTask
@@ -80,6 +81,33 @@ func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTask
 				Insert()
 			if err != nil {
 				return err
+			}
+		}
+		if len(operations) > 0 {
+			_, err = tx.Model(&operations).OnConflict("(package_id, version, revision, file_id, operation_id) do update").
+				Set("slug = EXCLUDED.slug").
+				Set("specification_type = EXCLUDED.specification_type").
+				Set("ruleset_id = EXCLUDED.ruleset_id").
+				Set("data_hash = EXCLUDED.data_hash").
+				Set("lint_status = EXCLUDED.lint_status").
+				Set("lint_details = EXCLUDED.lint_details").
+				Insert()
+			if err != nil {
+				return err
+			}
+		}
+		if len(operationResults) > 0 {
+			for _, opResult := range operationResults {
+				if opResult != nil {
+					_, err = tx.Model(opResult).OnConflict("(data_hash, ruleset_id) do update").
+						Set("linter_version = EXCLUDED.linter_version").
+						Set("data = EXCLUDED.data").
+						Set("summary = EXCLUDED.summary").
+						Insert()
+					if err != nil {
+						return err
+					}
+				}
 			}
 		}
 		return nil
