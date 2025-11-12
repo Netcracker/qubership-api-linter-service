@@ -18,21 +18,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"sync"
+	"time"
+
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
+	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
-	"net/http"
-	"time"
+	log "github.com/sirupsen/logrus"
 )
 
 type ValidationService interface {
 	ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error)
 	GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error)
 	GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error)
+	StartBulkValidation(ctx context.Context, req view.BulkValidationRequest) (string, error)
+	GetBulkValidationStatus(ctx context.Context, jobId string) (*view.BulkValidationStatusResponse, error)
 }
 
 func NewValidationService(
@@ -53,6 +59,7 @@ func NewValidationService(
 		versionTaskProcessor:    versionTaskProcessor,
 		apihubClient:            apihubClient,
 		executorId:              executorId,
+		bulkJobs:                make(map[string]*bulkValidationJob),
 	}
 }
 
@@ -66,9 +73,21 @@ type validationServiceImpl struct {
 	versionTaskProcessor VersionTaskProcessor
 	apihubClient         client.ApihubClient
 	executorId           string
+
+	bulkJobs      map[string]*bulkValidationJob
+	bulkJobsMutex sync.RWMutex
 }
 
-func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
+type bulkValidationJob struct {
+	mu                sync.Mutex
+	status            view.AsyncStatus
+	totalVersions     int
+	processedVersions int
+	errorMessage      string
+	entries           []view.BulkValidationEntry
+}
+
+func (v *validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
 	ver, rev, err := getVersionAndRevision(ctx, v.apihubClient, packageId, version)
 	if err != nil {
 		return nil, err
@@ -172,7 +191,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 	return result, nil
 }
 
-func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
+func (v *validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
 	ver, rev, err := getVersionAndRevision(ctx, v.apihubClient, packageId, version)
 	if err != nil {
 		return nil, err
@@ -273,7 +292,7 @@ func makeSpectralSummary(summary map[string]interface{}) (*view.IssuesSummary, e
 	return &result, nil
 }
 
-func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error) {
+func (v *validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error) {
 	pkg, err := v.apihubClient.GetPackageById(ctx, packageId)
 	if err != nil {
 		return "", err
@@ -319,9 +338,267 @@ func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId st
 	return ent.Id, nil
 }
 
+func (v *validationServiceImpl) StartBulkValidation(ctx context.Context, req view.BulkValidationRequest) (string, error) {
+	if req.PackageId == "" {
+		return "", &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.RequiredParamsMissing,
+			Message: exception.RequiredParamsMissingMsg,
+			Params:  map[string]interface{}{"params": "packageId"},
+		}
+	}
+
+	rootPackage, err := v.apihubClient.GetPackageById(ctx, req.PackageId)
+	if err != nil {
+		return "", err
+	}
+	if rootPackage == nil {
+		return "", &exception.CustomError{
+			Status:  http.StatusNotFound,
+			Code:    exception.EntityNotFound,
+			Message: exception.EntityNotFoundMsg,
+			Params: map[string]interface{}{
+				"entity": "package",
+				"id":     req.PackageId,
+			},
+		}
+	}
+
+	excludeSet := make(map[string]struct{}, len(req.ExcludePackages))
+	for _, id := range req.ExcludePackages {
+		excludeSet[id] = struct{}{}
+	}
+
+	targetPackages, err := v.getTargetPackages(ctx, *rootPackage, excludeSet)
+	if err != nil {
+		return "", err
+	}
+
+	jobId := uuid.NewString()
+	job := &bulkValidationJob{
+		status:            view.ESProcessing,
+		entries:           make([]view.BulkValidationEntry, 0),
+		totalVersions:     0,
+		processedVersions: 0,
+	}
+
+	if len(targetPackages) == 0 {
+		job.status = view.ESSuccess
+		v.bulkJobsMutex.Lock()
+		v.bulkJobs[jobId] = job
+		v.bulkJobsMutex.Unlock()
+		return jobId, nil
+	}
+
+	v.bulkJobsMutex.Lock()
+	v.bulkJobs[jobId] = job
+	v.bulkJobsMutex.Unlock()
+
+	asyncCtx := secctx.MakeSysadminContext(context.Background())
+	utils.SafeAsync(func() {
+		v.runBulkValidationJob(asyncCtx, jobId, targetPackages, req.Version)
+	})
+	log.Infof("Bulk validation started for root package %s, jobId is: %s", req.PackageId, jobId)
+
+	return jobId, nil
+}
+
+func (v *validationServiceImpl) GetBulkValidationStatus(ctx context.Context, jobId string) (*view.BulkValidationStatusResponse, error) {
+	v.bulkJobsMutex.RLock()
+	job, exists := v.bulkJobs[jobId]
+	v.bulkJobsMutex.RUnlock()
+	if !exists {
+		return nil, &exception.CustomError{
+			Status:  http.StatusNotFound,
+			Code:    exception.EntityNotFound,
+			Message: exception.EntityNotFoundMsg,
+			Params: map[string]interface{}{
+				"entity": "bulk validation job",
+				"id":     jobId,
+			},
+		}
+	}
+
+	job.mu.Lock()
+	defer job.mu.Unlock()
+
+	packages := make([]view.BulkValidationEntry, len(job.entries))
+	copy(packages, job.entries)
+
+	return &view.BulkValidationStatusResponse{
+		JobId:             jobId,
+		Status:            job.status,
+		ProcessedVersions: job.processedVersions,
+		TotalVersions:     job.totalVersions,
+		Error:             job.errorMessage,
+		Packages:          packages,
+	}, nil
+}
+
+func (v *validationServiceImpl) runBulkValidationJob(ctx context.Context, jobId string, packageIds []string, versionFilter string) {
+	job := v.getBulkJob(jobId)
+	if job == nil {
+		return
+	}
+
+	job.mu.Lock()
+	job.status = view.ESProcessing
+	job.mu.Unlock()
+
+	type scheduleItem struct {
+		packageId string
+		version   string
+	}
+
+	var schedule []scheduleItem
+	for _, pkgId := range packageIds {
+		versions, err := v.collectPackageVersions(ctx, pkgId, versionFilter)
+		if err != nil {
+			job.mu.Lock()
+			job.status = view.ESError
+			job.errorMessage = err.Error()
+			job.mu.Unlock()
+			return
+		}
+		for _, ver := range versions {
+			if ver == "" {
+				continue
+			}
+			schedule = append(schedule, scheduleItem{packageId: pkgId, version: ver})
+		}
+	}
+
+	job.mu.Lock()
+	job.totalVersions = len(schedule)
+	job.entries = make([]view.BulkValidationEntry, 0, len(schedule))
+	job.mu.Unlock()
+
+	if len(schedule) == 0 {
+		job.mu.Lock()
+		job.status = view.ESSuccess
+		job.mu.Unlock()
+		return
+	}
+
+	for _, item := range schedule {
+		taskId, err := v.ValidateVersion(ctx, item.packageId, item.version, "")
+
+		job.mu.Lock()
+		entry := view.BulkValidationEntry{
+			PackageId:         item.packageId,
+			Version:           item.version,
+			ValidationStarted: err == nil,
+		}
+		if err == nil {
+			entry.ValidationTaskId = taskId
+			job.processedVersions++
+		} else {
+			job.status = view.ESError
+			job.errorMessage = err.Error()
+		}
+		job.entries = append(job.entries, entry)
+		job.mu.Unlock()
+
+		if err != nil {
+			return
+		}
+	}
+
+	job.mu.Lock()
+	job.status = view.ESSuccess
+	job.mu.Unlock()
+}
+
+func (v *validationServiceImpl) getTargetPackages(ctx context.Context, root view.SimplePackage, exclude map[string]struct{}) ([]string, error) {
+	if _, skip := exclude[root.Id]; skip {
+		return []string{}, nil
+	}
+
+	switch root.Kind {
+	case string(view.KindPackage):
+		return []string{root.Id}, nil
+	case string(view.KindGroup):
+		var result []string
+
+		limit := 100
+		page := 0
+		for {
+			packages, err := v.apihubClient.GetPackagesList(ctx, view.PackageListReq{
+				ParentID: root.Id,
+				Kind:     []string{string(view.KindPackage)},
+				Page:     &page,
+				Limit:    &limit,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			if packages == nil {
+				return []string{}, nil
+			}
+
+			for _, pkg := range packages.Packages {
+				if _, skip := exclude[pkg.Id]; skip {
+					continue
+				}
+				result = append(result, pkg.Id)
+			}
+
+			if len(packages.Packages) < limit {
+				break
+			}
+			page++
+		}
+
+		return result, nil
+	default:
+		return nil, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.LintNotSupported,
+			Message: exception.LintNotSupportedMsg,
+			Params: map[string]interface{}{
+				"$kind": root.Kind,
+				"$id":   root.Id,
+			},
+		}
+	}
+}
+
+func (v *validationServiceImpl) collectPackageVersions(ctx context.Context, packageId string, versionFilter string) ([]string, error) {
+	if versionFilter != "" {
+		return []string{versionFilter}, nil
+	}
+
+	versions, err := v.apihubClient.ListPackageVersions(ctx, packageId)
+	if err != nil {
+		return nil, err
+	}
+	if versions == nil {
+		return []string{}, nil
+	}
+
+	result := make([]string, 0, len(versions))
+	for _, ver := range versions {
+		if ver.Version != "" {
+			result = append(result, ver.Version)
+		}
+	}
+	return result, nil
+}
+
+func (v *validationServiceImpl) getBulkJob(jobId string) *bulkValidationJob {
+	v.bulkJobsMutex.RLock()
+	job, exists := v.bulkJobs[jobId]
+	v.bulkJobsMutex.RUnlock()
+	if !exists {
+		return nil
+	}
+	return job
+}
+
 const tempFolder = "tmp"
 
-func (v validationServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds []string) (map[string]entity.Ruleset, error) {
+func (v *validationServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds []string) (map[string]entity.Ruleset, error) {
 	rulesetMap := make(map[string]entity.Ruleset)
 	for _, rulesetId := range rulesetIds {
 		_, exists := rulesetMap[rulesetId]

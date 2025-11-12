@@ -25,8 +25,10 @@ type ApihubClient interface {
 	GetRsaPublicKey(ctx context.Context) (*view.PublicKey, error)
 	GetApiKeyByKey(apiKey string) (*view.ApihubApiKeyView, error)
 
+	GetPackagesList(ctx context.Context, packageListReq view.PackageListReq) (*view.Packages, error)
 	GetPackageById(ctx context.Context, id string) (*view.SimplePackage, error)
 	GetVersion(ctx context.Context, id, version string) (*view.VersionContent, error)
+	ListPackageVersions(ctx context.Context, packageId string) ([]view.PackageVersion, error)
 
 	GetVersionDocuments(ctx context.Context, packageId, version string) (*view.VersionDocuments, error)
 	GetDocumentRawData(ctx context.Context, packageId, version string, fileSlug string) ([]byte, error)
@@ -94,6 +96,66 @@ func (a apihubClientImpl) GetApiKeyByKey(apiKey string) (*view.ApihubApiKeyView,
 	}
 
 	return &apiKeyView, nil
+}
+
+func (a apihubClientImpl) GetPackagesList(ctx context.Context, packageListReq view.PackageListReq) (*view.Packages, error) {
+	req := a.makeRequest(ctx)
+
+	if packageListReq.TextFilter != "" {
+		req.SetQueryParam("textFilter", packageListReq.TextFilter)
+	}
+	if packageListReq.ParentID != "" {
+		req.SetQueryParam("parentId", packageListReq.ParentID)
+	}
+	if len(packageListReq.Kind) > 0 {
+		req.SetQueryParam("kind", strings.Join(packageListReq.Kind, ","))
+	}
+	if packageListReq.ServiceName != "" {
+		req.SetQueryParam("serviceName", packageListReq.ServiceName)
+	}
+
+	if packageListReq.ShowParents != nil {
+		req.SetQueryParam("showParents", strconv.FormatBool(*packageListReq.ShowParents))
+	}
+	if packageListReq.LastReleaseVersionDetails != nil {
+		req.SetQueryParam("lastReleaseVersionDetails", strconv.FormatBool(*packageListReq.LastReleaseVersionDetails))
+	}
+	if packageListReq.ShowAllDescendants != nil {
+		req.SetQueryParam("showAllDescendants", strconv.FormatBool(*packageListReq.ShowAllDescendants))
+	}
+
+	// Set integer parameters
+	if packageListReq.Limit != nil {
+		req.SetQueryParam("limit", strconv.Itoa(*packageListReq.Limit))
+	}
+	if packageListReq.Page != nil {
+		req.SetQueryParam("page", strconv.Itoa(*packageListReq.Page))
+	}
+
+	resp, err := req.Get(fmt.Sprintf("%s/api/v2/packages", a.apihubUrl))
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for error status codes
+	if resp.StatusCode() != http.StatusOK {
+		if resp.StatusCode() == http.StatusNotFound {
+			return nil, nil
+		}
+		if authErr := checkUnauthorized(resp); authErr != nil {
+			return nil, authErr
+		}
+		return nil, fmt.Errorf("failed to list packages: status code %d %v", resp.StatusCode(), resp.Body())
+	}
+
+	// Parse successful response
+	var packageResponse view.Packages
+	err = json.Unmarshal(resp.Body(), &packageResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	return &packageResponse, nil
 }
 
 func checkUnauthorized(resp *resty.Response) error {
@@ -189,6 +251,49 @@ func (a apihubClientImpl) GetVersion(ctx context.Context, id, version string) (*
 		return nil, err
 	}
 	return &pVersion, nil
+}
+
+func (a apihubClientImpl) ListPackageVersions(ctx context.Context, packageId string) ([]view.PackageVersion, error) {
+	var allVersions []view.PackageVersion
+	limit := 100
+	page := 0
+
+	for {
+		req := a.makeRequest(ctx)
+		req.SetQueryParam("limit", strconv.Itoa(limit))
+		req.SetQueryParam("page", strconv.Itoa(page))
+
+		resp, err := req.Get(fmt.Sprintf("%s/api/v3/packages/%s/versions", a.apihubUrl, url.PathEscape(packageId)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to list versions for package %s: %w", packageId, err)
+		}
+
+		if resp.StatusCode() != http.StatusOK {
+			if resp.StatusCode() == http.StatusNotFound {
+				return nil, nil
+			}
+			if authErr := checkUnauthorized(resp); authErr != nil {
+				return nil, authErr
+			}
+			if customErr := checkCustomError(resp); customErr != nil {
+				return nil, customErr
+			}
+			return nil, fmt.Errorf("failed to list versions for package %s: status code %d %s", packageId, resp.StatusCode(), string(resp.Body()))
+		}
+
+		var versionsResp view.PackageVersionsResponse
+		if err := json.Unmarshal(resp.Body(), &versionsResp); err != nil {
+			return nil, err
+		}
+
+		allVersions = append(allVersions, versionsResp.Versions...)
+		if len(versionsResp.Versions) < limit {
+			break
+		}
+		page++
+	}
+
+	return allVersions, nil
 }
 
 func (a apihubClientImpl) GetVersionDocuments(ctx context.Context, packageId, version string) (*view.VersionDocuments, error) {

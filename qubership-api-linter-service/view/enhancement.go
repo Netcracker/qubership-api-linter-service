@@ -1,16 +1,16 @@
 package view
 
 type EnhancementStatusResponse struct {
-	Status  EnhancementStatus `json:"status"`
-	Details string            `json:"details"`
+	Status  AsyncStatus `json:"status"`
+	Details string      `json:"details"`
 }
 
-type EnhancementStatus string
+type AsyncStatus string
 
-const ESNotStarted EnhancementStatus = "not_started"
-const ESProcessing EnhancementStatus = "processing"
-const ESSuccess EnhancementStatus = "success"
-const ESError EnhancementStatus = "error"
+const ESNotStarted AsyncStatus = "not_started"
+const ESProcessing AsyncStatus = "processing"
+const ESSuccess AsyncStatus = "success"
+const ESError AsyncStatus = "error"
 
 type PublishEnhancementRequest struct {
 	PackageId       string        `json:"packageId"`
