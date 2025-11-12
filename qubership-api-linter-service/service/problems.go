@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Netcracker/qubership-api-linter-service/client"
-	"github.com/Netcracker/qubership-api-linter-service/view"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"slices"
 	"time"
+
+	"github.com/Netcracker/qubership-api-linter-service/client"
+	"github.com/Netcracker/qubership-api-linter-service/view"
+	log "github.com/sirupsen/logrus"
 )
 
 type ProblemsService interface {
@@ -113,11 +114,7 @@ func (p problemsServiceImpl) GetDocProblems(ctx context.Context, packageId strin
 
 	result, exists := p.storage[key]
 	if !exists {
-		return []view.AIApiDocCatProblem{{
-			Severity: "Error",
-			Text:     "No data found!",
-			Category: "Internal error",
-		}}, nil
+		return []view.AIApiDocCatProblem{}, nil
 	}
 
 	return result, nil

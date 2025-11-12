@@ -190,9 +190,9 @@ func (l OAIClientImpl) CategorizeProblems(ctx context.Context, problems []view.A
 	return result.Problems, nil
 }
 
-const defaultFixProblemsPrompt = `You need to enhance the specification and fix the following problems. Consider list of problems and linter report.
-Do not rename tags. Do not change paths and parameters. Do not introduce breaking changes.
-Use TMF SID and TMF Open API notation, selecting names that align with these specifications when applicable.
+const defaultFixProblemsPrompt = `You need to enhance the specification and fix the following problems. 
+Consider list of problems and linter report. Do not rename tags. 
+Do not change paths and parameters. Use TMF Open API notation when applicable. 
 Return only updated specification (with changes). Avoid any other output.`
 
 func (l OAIClientImpl) FixProblems(ctx context.Context, docStr string, problems []view.AIApiDocCatProblem, lintReport []view.ValidationIssue) (string, error) {

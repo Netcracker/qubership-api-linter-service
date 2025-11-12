@@ -327,6 +327,7 @@ func (e enhancementServiceImpl) PublishEnhancedDocs(ctx context.Context, package
 	src.Config.MigrationId = ""
 	src.Config.NoChangelog = false
 	src.Config.PublishedAt = time.Time{}
+	src.Config.PublishId = ""
 
 	buildId, err := e.apihubClient.PublishVersion(ctx, src.Config, data)
 	if err != nil {
