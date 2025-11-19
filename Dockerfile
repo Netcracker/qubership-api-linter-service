@@ -24,7 +24,7 @@ COPY qubership-api-linter-service ./qubership-api-linter-service
 
 WORKDIR /workspace/qubership-api-linter-service
 
-RUN GOSUMDB=off CGO_ENABLED=0 go mod tidy && go mod download && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build .
+RUN GOSUMDB=off CGO_ENABLED=0 go mod tidy && go mod download && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -cover -covermode=atomic -coverpkg=./... .
 
 FROM docker.io/alpine:3.22.1
 
@@ -44,8 +44,10 @@ WORKDIR /app/qubership-api-linter-service
 COPY --from=builder /workspace/qubership-api-linter-service/qubership-api-linter-service ./qubership-api-linter-service
 COPY --from=builder /workspace/qubership-api-linter-service/resources ./resources
 
+RUN mkdir cov
 RUN chmod -R a+rwx /app
 
 USER 10001
 
+ENV GOCOVERDIR=./cov
 ENTRYPOINT ["./qubership-api-linter-service"]

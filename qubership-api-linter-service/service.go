@@ -21,6 +21,8 @@ import (
 	"runtime/debug"
 	"sync"
 	"time"
+    
+    "runtime/coverage"
 
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/db"
@@ -187,6 +189,11 @@ func main() {
 
 	// Test data cleanup
 	r.HandleFunc("/api/internal/clear/{testId}", security.Secure(cleanupController.ClearTestData)).Methods(http.MethodDelete)
+    
+    r.HandleFunc("/debug/flush-coverage", func(w http.ResponseWriter, r *http.Request) {
+			flushCoverage()
+			w.Write([]byte("ok"))
+		}).Methods(http.MethodGet)
 
 	// Service endpoints
 	r.HandleFunc("/live", healthController.HandleLiveRequest).Methods(http.MethodGet)
@@ -240,5 +247,18 @@ func makeServer(systemInfoService service.SystemInfoService, r *mux.Router) *htt
 		Addr:         listenAddr,
 		WriteTimeout: 600 * time.Second,
 		ReadTimeout:  60 * time.Second,
+	}
+}
+
+
+func flushCoverage() {
+	dir := os.Getenv("GOCOVERDIR")
+	log.Printf("coverage: flushing to %q", dir)
+
+	if err := coverage.WriteMetaDir(dir); err != nil {
+		log.Printf("coverage: WriteMetaDir error: %v", err)
+	}
+	if err := coverage.WriteCountersDir(dir); err != nil {
+		log.Printf("coverage: WriteCountersDir error: %v", err)
 	}
 }
