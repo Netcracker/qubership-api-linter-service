@@ -30,7 +30,7 @@ type EnhancementService interface {
 }
 
 func NewEnhancementService(apihubClient client.ApihubClient, llmClient client.LLMClient, problemsService ProblemsService,
-	validationService ValidationService, scoringService ScoringService, spectralExecutor SpectralExecutor, ruleSetRepository repository.RulesetRepository, localFileStore bool) EnhancementService {
+	validationService ValidationService, scoringService ScoringService, spectralExecutor SpectralExecutor, ruleSetRepository repository.RulesetRepository, operationResultRepository repository.OperationResultRepository, localFileStore bool) EnhancementService {
 
 	status := make(map[string]view.EnhancementStatusResponse)
 	enhancedDocs := make(map[string]string)
@@ -56,13 +56,14 @@ func NewEnhancementService(apihubClient client.ApihubClient, llmClient client.LL
 	}
 
 	return &enhancementServiceImpl{
-		apihubClient:      apihubClient,
-		llmClient:         llmClient,
-		problemsService:   problemsService,
-		validationService: validationService,
-		scoringService:    scoringService,
-		spectralExecutor:  spectralExecutor,
-		ruleSetRepository: ruleSetRepository,
+		apihubClient:              apihubClient,
+		llmClient:                 llmClient,
+		problemsService:           problemsService,
+		validationService:         validationService,
+		scoringService:            scoringService,
+		spectralExecutor:          spectralExecutor,
+		ruleSetRepository:         ruleSetRepository,
+		operationResultRepository: operationResultRepository,
 
 		localFileStore: localFileStore,
 		status:         status,
@@ -71,13 +72,14 @@ func NewEnhancementService(apihubClient client.ApihubClient, llmClient client.LL
 }
 
 type enhancementServiceImpl struct {
-	apihubClient      client.ApihubClient
-	llmClient         client.LLMClient
-	problemsService   ProblemsService
-	validationService ValidationService
-	scoringService    ScoringService
-	spectralExecutor  SpectralExecutor
-	ruleSetRepository repository.RulesetRepository
+	apihubClient              client.ApihubClient
+	llmClient                 client.LLMClient
+	problemsService           ProblemsService
+	validationService         ValidationService
+	scoringService            ScoringService
+	spectralExecutor          SpectralExecutor
+	ruleSetRepository         repository.RulesetRepository
+	operationResultRepository repository.OperationResultRepository
 
 	// TODO: temp!
 	localFileStore bool
@@ -105,25 +107,41 @@ func (e enhancementServiceImpl) EnhanceDoc(ctx context.Context, packageId string
 
 	data, err := e.apihubClient.GetDocumentRawData(ctx, packageId, version, slug)
 	if err != nil {
-		// TODO: save status to storage ???
+		e.status[key] = view.EnhancementStatusResponse{
+			Status:  view.ESError,
+			Details: fmt.Sprintf("failed to get document raw data: %s", err),
+		}
+		e.saveStorage()
 		return err
 	}
 
 	if len(data) == 0 {
-		// TODO: save status to storage ???
+		e.status[key] = view.EnhancementStatusResponse{
+			Status:  view.ESError,
+			Details: "document data is empty",
+		}
+		e.saveStorage()
 		return fmt.Errorf("doc data is empty")
 	}
 
 	problems, err := e.problemsService.GetDocProblems(ctx, packageId, version, slug)
 	if err != nil {
-		// TODO: save status to storage
-		return fmt.Errorf("Failed to get doc problems")
+		e.status[key] = view.EnhancementStatusResponse{
+			Status:  view.ESError,
+			Details: fmt.Sprintf("failed to get doc problems: %s", err),
+		}
+		e.saveStorage()
+		return fmt.Errorf("failed to get doc problems")
 	}
 
 	validationResult, err := e.validationService.GetValidationResult(ctx, packageId, version, slug)
 	if err != nil {
-		// TODO: save status to storage
-		return fmt.Errorf("Failed to get validation result")
+		e.status[key] = view.EnhancementStatusResponse{
+			Status:  view.ESError,
+			Details: fmt.Sprintf("failed to get validation result: %s", err),
+		}
+		e.saveStorage()
+		return fmt.Errorf("failed to get validation result")
 	}
 
 	e.status[key] = view.EnhancementStatusResponse{
@@ -136,12 +154,22 @@ func (e enhancementServiceImpl) EnhanceDoc(ctx context.Context, packageId string
 
 		asyncContext := context.Background()
 
-		fixedDoc, err := e.llmClient.FixProblems(asyncContext, string(data), problems, validationResult.Issues)
+		// Sum up linter issues for operations in the document
+		operationIssues, err := e.getOperationLinterIssues(asyncContext, packageId, version, slug, ver, rev, validationResult.Ruleset.Id)
 		if err != nil {
-			log.Errorf("Failed to generate fixed doc: %s", err)
+			log.Warnf("Failed to get operation linter issues: %v", err)
+			// Continue with empty issues if we can't get operation issues
+			operationIssues = []view.ValidationIssue{}
+		}
+
+		// Problems are already deduplicated by GetDocProblems (see problemsServiceImpl.GetDocProblems)
+		// Use only operation-level linter issues
+		fixedDoc, err := e.llmClient.FixProblems(asyncContext, string(data), problems, operationIssues)
+		if err != nil {
+			log.Errorf("failed to generate fixed doc: %s", err)
 			e.status[key] = view.EnhancementStatusResponse{
 				Status:  view.ESError,
-				Details: fmt.Sprintf("Failed to generate fixed doc: %s", err),
+				Details: fmt.Sprintf("failed to generate fixed doc: %s", err),
 			}
 			e.saveStorage()
 			return
@@ -170,7 +198,7 @@ func (e enhancementServiceImpl) EnhanceDoc(ctx context.Context, packageId string
 			log.Errorf("Failed to generate enhanced doc score")
 			e.status[key] = view.EnhancementStatusResponse{
 				Status:  view.ESError,
-				Details: fmt.Sprintf("Failed to generate enhanced doc score"),
+				Details: "failed to generate enhanced doc score",
 			}
 			e.saveStorage()
 			return
@@ -365,6 +393,64 @@ func (e enhancementServiceImpl) saveStorage() {
 	if err != nil {
 		log.Errorf("Failed to save docs storage to file: %+v", err)
 	}
+}
+
+func (e enhancementServiceImpl) getOperationLinterIssues(ctx context.Context, packageId string, version string, slug string, ver string, rev int, rulesetId string) ([]view.ValidationIssue, error) {
+	allIssues := make([]view.ValidationIssue, 0)
+
+	// Get all operations for the version
+	operations, err := e.operationResultRepository.GetOperationsForVersion(ctx, packageId, ver)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get operations for version: %w", err)
+	}
+
+	// Filter operations by document slug and revision, then collect linter issues
+	for _, op := range operations {
+		// Filter by revision and slug to get only operations for this document
+		if op.Revision != rev || op.Slug != slug {
+			continue
+		}
+
+		// Skip operations without data hash (no lint result)
+		if op.DataHash == "" {
+			continue
+		}
+
+		// Get operation result
+		opResult, err := e.operationResultRepository.GetOperationResult(ctx, op.DataHash, rulesetId)
+		if err != nil {
+			log.Warnf("Failed to get operation result for operation %s: %v", op.OperationId, err)
+			continue
+		}
+		if opResult == nil {
+			continue
+		}
+
+		// Convert spectral output to validation issues
+		var spectralOutput []view.SpectralOutputItem
+		err = json.Unmarshal(opResult.Data, &spectralOutput)
+		if err != nil {
+			log.Warnf("Failed to unmarshal operation result data for operation %s: %v", op.OperationId, err)
+			continue
+		}
+
+		for _, item := range spectralOutput {
+			var path []string
+			if item.Path != nil {
+				path = item.Path
+			} else {
+				path = make([]string, 0)
+			}
+			allIssues = append(allIssues, view.ValidationIssue{
+				Path:     path,
+				Code:     item.Code,
+				Severity: view.ConvertSpectralSeverityToString(item.Severity),
+				Message:  item.Message,
+			})
+		}
+	}
+
+	return allIssues, nil
 }
 
 func (e enhancementServiceImpl) lintEnhancedDoc(ctx context.Context, packageId string, version string, slug string, rulesetId string, docData string) (*view.IssuesSummary, error) {

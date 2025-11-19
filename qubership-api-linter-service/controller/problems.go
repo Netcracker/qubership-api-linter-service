@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/Netcracker/qubership-api-linter-service/exception"
@@ -58,6 +59,7 @@ func (s problemsControllerImpl) GetVersionIssues(w http.ResponseWriter, r *http.
 		respondWithError(w, "Failed to get version issues", err)
 		return
 	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=issues_%s_%s.json", packageId, versionName))
 	respondWithJson(w, http.StatusOK, result)
 }
 

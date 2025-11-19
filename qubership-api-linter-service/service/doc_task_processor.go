@@ -408,6 +408,7 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 			}
 		}
 
+		// TODO: async!
 		// Generate score for operation if successful
 		if opStatus == view.StatusSuccess && operation != nil {
 			score, err := d.scoringService.MakeRestOpScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, op.OperationId, string(operation.Data), opSummary)

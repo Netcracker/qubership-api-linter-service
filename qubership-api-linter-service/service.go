@@ -188,7 +188,7 @@ func main() {
 	cleanupService := service.NewCleanupService(cp)
 	authorizationService := service.NewAuthorizationService(apihubClient)
 
-	enhancementService := service.NewEnhancementService(apihubClient, oaiCl, problemsService, validationService, scoringService, spectralExecutor, ruleSetRepository, localFileStore)
+	enhancementService := service.NewEnhancementService(apihubClient, oaiCl, problemsService, validationService, scoringService, spectralExecutor, ruleSetRepository, operationResultRepository, localFileStore)
 
 	validationController := controller.NewValidationController(validationService, authorizationService)
 
