@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go/v3"
@@ -17,7 +18,7 @@ import (
 )
 
 type LLMClient interface {
-	GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, error)
+	GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, string, error)
 	CategorizeProblems(ctx context.Context, problems []view.AIApiDocProblem) ([]view.AIApiDocCatProblem, error)
 	FixProblems(ctx context.Context, docStr string, problems []view.AIApiDocCatProblem, lintReport []view.ValidationIssue) (string, error)
 	UpdateGenerateProblemsPrompt(prompt string)
@@ -99,11 +100,7 @@ Scoring: A score reflecting the uniformity of naming and the logical flow of res
 What it measures: The extent to which the API defines non-success HTTP status codes (4xx, 5xx) and their corresponding error response schemas.
 LLM Analysis: The LLM can check if operations define common error responses like 400 Bad Request, 401 Unauthorized, 404 Not Found, and 500 Internal Server Error. A higher score is given if these responses have a structured schema (e.g., using a Error component) with descriptive fields like code, message, and details.
 Scoring: A score based on the coverage of expected error codes across operations and the richness of the defined error schemas.
-5. Schema Reusability and Structure
-What it measures: The effective use of OpenAPI components ($ref) to avoid duplication and promote a consistent data model.
-LLM Analysis: The LLM can analyze the components/schemas section to identify duplicated structures that should be refactored into a shared definition. It can assess if the schemas are well-normalized and if common objects (like User, Error, PaginationMetadata) are defined once and reused.
-Scoring: A score based on the ratio of reused components ($ref) to inline schemas and the level of duplication detected. Severity should not be higher than warning.
-6. Security Schema Clarity
+5. Security Schema Clarity
 What it measures: The clarity and detail provided in the components/securitySchemes definition.
 LLM Analysis: Beyond just having a security scheme defined (e.g., type: http, scheme: bearer), the LLM can evaluate the quality of the description field. A high-quality description explains the apiKey format, how to obtain it (e.g., link to an auth server), and any required scopes or flows.
 Scoring: A score based on the presence and comprehensiveness of the security scheme descriptions.
@@ -112,7 +109,7 @@ Severity in deprecated operations should not be higher than warning.
 When determining the entity name, use TMF SID and TMF Open API notation, selecting names that align with these specifications when applicable.
 List identified issues in json format. Avoid any other output.`
 
-func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, error) {
+func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, string, error) {
 	start := time.Now()
 	// TODO: parametrization?
 	messages := []openai.ChatCompletionMessageParamUnion{
@@ -137,16 +134,18 @@ func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]v
 	})
 	log.Infof("finished detect problems with openai client, it took %dms", time.Since(start).Milliseconds())
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var result view.IAProblemsOutput
 	err = json.Unmarshal([]byte(chat.Choices[0].Message.Content), &result)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return result.Problems, nil
+	promtpHash := utils.CreateSHA256Hash([]byte(defaultGenerateProblemsPrompt))
+
+	return result.Problems, promtpHash, nil
 }
 
 func (l OAIClientImpl) CategorizeProblems(ctx context.Context, problems []view.AIApiDocProblem) ([]view.AIApiDocCatProblem, error) {

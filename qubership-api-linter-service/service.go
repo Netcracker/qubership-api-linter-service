@@ -156,6 +156,9 @@ func main() {
 	docResultRepository := repository.NewDocResultRepository(cp)
 	versionResultRepository := repository.NewVersionResultRepository(cp)
 	lintResultRepository := repository.NewLintResultRepository(cp)
+	operationResultRepository := repository.NewOperationResultRepository(cp)
+	problemsRepository := repository.NewProblemsRepository(cp)
+	scoringRepository := repository.NewScoringRepository(cp)
 
 	linterSelectorService := service.NewLinterSelectorService(ruleSetRepository)
 
@@ -174,8 +177,8 @@ func main() {
 		}
 	}
 
-	problemsService := service.NewProblemsService(apihubClient, oaiCl, localFileStore)
-	scoringService := service.NewScoringService(apihubClient, oaiCl, problemsService, localFileStore)
+	problemsService := service.NewProblemsService(apihubClient, oaiCl, operationResultRepository, versionResultRepository, problemsRepository, localFileStore)
+	scoringService := service.NewScoringService(apihubClient, oaiCl, problemsService, operationResultRepository, scoringRepository, localFileStore)
 
 	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, apihubClient, spectralExecutor, executorId, scoringService)
 
@@ -221,11 +224,17 @@ func main() {
 	// Scoring
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/scoring", security.Secure(scoringController.GetScoringData)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/scoring", security.Secure(scoringController.RunScoring)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/scoring", security.Secure(scoringController.GetVersionScoringData)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/scoring/status", security.Secure(scoringController.GetScoringStatus)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}/scoring", security.Secure(scoringController.GetEnhancedScoreData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/operations/{operationId}/scoring", security.Secure(scoringController.GetOpScoringData)).Methods(http.MethodGet)
 
 	// Problems
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/problems", security.Secure(problemsController.GetProblemsData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/operations/{operationId}/problems", security.Secure(problemsController.GetOpProblemsData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/issues", security.Secure(problemsController.GetVersionIssues)).Methods(http.MethodGet)
+	// TODO: Version Linter issues
+	// TODO: Version AI issues
 
 	r.HandleFunc("/api/v1/llm/prompts/generateProblems", security.Secure(llmTuningController.UpdateGenerateProblemsPrompt)).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/llm/prompts/fixProblems", security.Secure(llmTuningController.UpdateFixProblemsPrompt)).Methods(http.MethodPost)

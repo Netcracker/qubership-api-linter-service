@@ -29,3 +29,8 @@ type ProblemCategories struct {
 	Category string `json:"category"`
 	Count    int    `json:"count"`
 }
+
+type VersionIssues struct {
+	LinterIssues []OperationResult
+	AIProblems   []AIApiDocCatProblem
+}

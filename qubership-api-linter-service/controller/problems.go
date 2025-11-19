@@ -1,14 +1,17 @@
 package controller
 
 import (
+	"net/http"
+
 	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/service"
-	"net/http"
 )
 
 type ProblemsController interface {
 	GetProblemsData(w http.ResponseWriter, r *http.Request)
+	GetOpProblemsData(w http.ResponseWriter, r *http.Request)
+	GetVersionIssues(w http.ResponseWriter, r *http.Request)
 }
 
 func NewProblemsController(problemsService service.ProblemsService, authorizationService service.AuthorizationService) ProblemsController {
@@ -18,6 +21,44 @@ func NewProblemsController(problemsService service.ProblemsService, authorizatio
 type problemsControllerImpl struct {
 	docProblemsService   service.ProblemsService
 	authorizationService service.AuthorizationService
+}
+
+func (s problemsControllerImpl) GetVersionIssues(w http.ResponseWriter, r *http.Request) {
+	packageId := getStringParam(r, "packageId")
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := s.authorizationService.HasReadPackagePermission(ctx, packageId)
+	if err != nil {
+		respondWithError(w, "Failed to check permissions", err)
+		return
+	}
+	if !sufficientPrivileges {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusForbidden,
+			Code:    exception.InsufficientPrivileges,
+			Message: exception.InsufficientPrivilegesMsg,
+		})
+		return
+	}
+
+	versionName, err := getUnescapedStringParam(r, "version")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "version"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	result, err := s.docProblemsService.GetVersionIssues(ctx, packageId, versionName)
+	if err != nil {
+		respondWithError(w, "Failed to get version issues", err)
+		return
+	}
+	respondWithJson(w, http.StatusOK, result)
 }
 
 func (s problemsControllerImpl) GetProblemsData(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +106,68 @@ func (s problemsControllerImpl) GetProblemsData(w http.ResponseWriter, r *http.R
 	result, err := s.docProblemsService.GetDocProblems(ctx, packageId, versionName, slug)
 	if err != nil {
 		respondWithError(w, "Failed to get problems data", err)
+		return
+	}
+	respondWithJson(w, http.StatusOK, result)
+}
+
+func (s problemsControllerImpl) GetOpProblemsData(w http.ResponseWriter, r *http.Request) {
+	packageId := getStringParam(r, "packageId")
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := s.authorizationService.HasReadPackagePermission(ctx, packageId)
+	if err != nil {
+		respondWithError(w, "Failed to check permissions", err)
+		return
+	}
+	if !sufficientPrivileges {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusForbidden,
+			Code:    exception.InsufficientPrivileges,
+			Message: exception.InsufficientPrivilegesMsg,
+		})
+		return
+	}
+
+	versionName, err := getUnescapedStringParam(r, "version")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "version"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	slug, err := getUnescapedStringParam(r, "slug")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "slug"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	operationId, err := getUnescapedStringParam(r, "operationId")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "operationId"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	result, err := s.docProblemsService.GetOpProblems(ctx, packageId, versionName, slug, operationId)
+	if err != nil {
+		respondWithError(w, "Failed to get operation problems data", err)
 		return
 	}
 	respondWithJson(w, http.StatusOK, result)

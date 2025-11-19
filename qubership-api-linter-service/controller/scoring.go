@@ -14,6 +14,9 @@ type ScoringController interface {
 
 	RunScoring(w http.ResponseWriter, r *http.Request)
 	GetScoringStatus(w http.ResponseWriter, r *http.Request)
+
+	GetVersionScoringData(w http.ResponseWriter, r *http.Request)
+	GetOpScoringData(w http.ResponseWriter, r *http.Request)
 }
 
 func NewScoringController(scoringService service.ScoringService,
@@ -30,6 +33,44 @@ type scoringControllerImpl struct {
 	scoringService       service.ScoringService
 	validationService    service.ValidationService
 	authorizationService service.AuthorizationService
+}
+
+func (s scoringControllerImpl) GetVersionScoringData(w http.ResponseWriter, r *http.Request) {
+	packageId := getStringParam(r, "packageId")
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := s.authorizationService.HasReadPackagePermission(ctx, packageId)
+	if err != nil {
+		respondWithError(w, "Failed to check permissions", err)
+		return
+	}
+	if !sufficientPrivileges {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusForbidden,
+			Code:    exception.InsufficientPrivileges,
+			Message: exception.InsufficientPrivilegesMsg,
+		})
+		return
+	}
+
+	versionName, err := getUnescapedStringParam(r, "version")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "version"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	result, err := s.scoringService.GetVersionScore(ctx, packageId, versionName)
+	if err != nil {
+		respondWithError(w, "Failed to get version scoring data", err)
+		return
+	}
+	respondWithJson(w, http.StatusOK, result)
 }
 
 func (s scoringControllerImpl) RunScoring(w http.ResponseWriter, r *http.Request) {
@@ -230,6 +271,68 @@ func (s scoringControllerImpl) GetEnhancedScoreData(w http.ResponseWriter, r *ht
 	result, err := s.scoringService.GetEnhancedRestDocScoringData(ctx, packageId, versionName, slug)
 	if err != nil {
 		respondWithError(w, "Failed to get enhanced scoring data", err)
+		return
+	}
+	respondWithJson(w, http.StatusOK, result)
+}
+
+func (s scoringControllerImpl) GetOpScoringData(w http.ResponseWriter, r *http.Request) {
+	packageId := getStringParam(r, "packageId")
+
+	ctx := secctx.MakeUserContext(r)
+	sufficientPrivileges, err := s.authorizationService.HasReadPackagePermission(ctx, packageId)
+	if err != nil {
+		respondWithError(w, "Failed to check permissions", err)
+		return
+	}
+	if !sufficientPrivileges {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusForbidden,
+			Code:    exception.InsufficientPrivileges,
+			Message: exception.InsufficientPrivilegesMsg,
+		})
+		return
+	}
+
+	versionName, err := getUnescapedStringParam(r, "version")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "version"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	slug, err := getUnescapedStringParam(r, "slug")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "slug"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	operationId, err := getUnescapedStringParam(r, "operationId")
+	if err != nil {
+		RespondWithCustomError(w, &exception.CustomError{
+			Status:  http.StatusBadRequest,
+			Code:    exception.InvalidURLEscape,
+			Message: exception.InvalidURLEscapeMsg,
+			Params:  map[string]interface{}{"param": "operationId"},
+			Debug:   err.Error(),
+		})
+		return
+	}
+
+	result, err := s.scoringService.GetRestOpScoringData(ctx, packageId, versionName, slug, operationId)
+	if err != nil {
+		respondWithError(w, "Failed to get operation scoring data", err)
 		return
 	}
 	respondWithJson(w, http.StatusOK, result)

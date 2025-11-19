@@ -1,7 +1,8 @@
 package view
 
 type Score struct {
-	OverallScore Grade         `json:"overallScore"`
+	OverallScore Grade         `json:"overallScore"` // TODO: deprecated?
+	DigitalScore int           `json:"digitalScore"`
 	Details      []ScoreDetail `json:"details"`
 }
 

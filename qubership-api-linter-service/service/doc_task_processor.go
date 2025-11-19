@@ -408,6 +408,17 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 			}
 		}
 
+		// Generate score for operation if successful
+		if opStatus == view.StatusSuccess && operation != nil {
+			score, err := d.scoringService.MakeRestOpScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, op.OperationId, string(operation.Data), opSummary)
+			if err != nil {
+				// Do not fail the task, just log the warning
+				log.Warnf("Failed to generate score for operation %s (task id = %s): %s", op.OperationId, task.Id, err)
+			} else {
+				log.Infof("Generated score for operation %s (task id = %s), score = %+v", op.OperationId, task.Id, score)
+			}
+		}
+
 		// Create operation hash
 		opHash := op.DataHash
 		// TODO not sure if required
