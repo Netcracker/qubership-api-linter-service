@@ -538,47 +538,56 @@ func (s *scoringServiceImpl) scoreOperationsForDocument(ctx context.Context, pac
 		return
 	}
 
-	for _, op := range docDetails.Operations {
-		operationWithData, err := s.apihubClient.GetOperationWithData(ctx, packageId, version, op.ApiType, op.OperationId)
-		if err != nil {
-			log.Warnf("Failed to get data for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
-			continue
-		}
-		if operationWithData == nil {
-			log.Warnf("Operation %s (doc %s) not found while scoring", op.OperationId, doc.Slug)
-			continue
-		}
+	wg := sync.WaitGroup{}
 
-		opHash := op.DataHash
-		if opHash == "" {
-			opHash = utils.CreateSHA256Hash(operationWithData.Data)
-		}
-		if opHash == "" {
-			log.Warnf("Operation %s (doc %s) has empty data hash; skip scoring", op.OperationId, doc.Slug)
-			continue
-		}
+	for _, opIt := range docDetails.Operations {
+		op := opIt
+		wg.Add(1)
+		utils.SafeAsync(func() {
+			defer wg.Done()
+			operationWithData, err := s.apihubClient.GetOperationWithData(ctx, packageId, version, op.ApiType, op.OperationId)
+			if err != nil {
+				log.Warnf("Failed to get data for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
+				return
+			}
+			if operationWithData == nil {
+				log.Warnf("Operation %s (doc %s) not found while scoring", op.OperationId, doc.Slug)
+				return
+			}
 
-		operationResult, err := s.operationResultRepository.GetOperationResult(ctx, opHash, doc.RulesetId)
-		if err != nil {
-			log.Warnf("Failed to get lint summary for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
-			continue
-		}
-		if operationResult == nil || operationResult.Summary == nil {
-			log.Warnf("Lint summary is missing for operation %s (doc %s)", op.OperationId, doc.Slug)
-			continue
-		}
+			opHash := op.DataHash
+			if opHash == "" {
+				opHash = utils.CreateSHA256Hash(operationWithData.Data)
+			}
+			if opHash == "" {
+				log.Warnf("Operation %s (doc %s) has empty data hash; skip scoring", op.OperationId, doc.Slug)
+				return
+			}
 
-		spectralSummary, err := spectralSummaryFromMap(operationResult.Summary)
-		if err != nil {
-			log.Warnf("Failed to convert lint summary for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
-			continue
-		}
+			operationResult, err := s.operationResultRepository.GetOperationResult(ctx, opHash, doc.RulesetId)
+			if err != nil {
+				log.Warnf("Failed to get lint summary for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
+				return
+			}
+			if operationResult == nil || operationResult.Summary == nil {
+				log.Warnf("Lint summary is missing for operation %s (doc %s)", op.OperationId, doc.Slug)
+				return
+			}
 
-		_, err = s.MakeRestOpScore(ctx, packageId, version, doc.Slug, op.OperationId, string(operationWithData.Data), spectralSummary)
-		if err != nil {
-			log.Warnf("Failed to generate score for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
-		}
+			spectralSummary, err := spectralSummaryFromMap(operationResult.Summary)
+			if err != nil {
+				log.Warnf("Failed to convert lint summary for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
+				return
+			}
+
+			_, err = s.MakeRestOpScore(ctx, packageId, version, doc.Slug, op.OperationId, string(operationWithData.Data), spectralSummary)
+			if err != nil {
+				log.Warnf("Failed to generate score for operation %s (doc %s): %v", op.OperationId, doc.Slug, err)
+			}
+		})
 	}
+
+	wg.Wait()
 }
 
 func spectralSummaryFromMap(summary map[string]interface{}) (view.SpectralResultSummary, error) {

@@ -262,11 +262,25 @@ func (p problemsServiceImpl) GetDocProblems(ctx context.Context, packageId strin
 		return nil, err
 	}
 
-	key := packageId + "|" + fmt.Sprintf("%s@%d", ver, rev) + "|" + slug
-
-	result, exists := p.storage[key]
-	if !exists {
+	// Get all problems for operations in the document
+	problemsList, err := p.problemsRepository.GetProblemsForDoc(ctx, packageId, ver, rev, slug)
+	if err != nil {
+		log.Warnf("Failed to get problems from database for document %s: %v", slug, err)
 		return []view.AIApiDocCatProblem{}, nil
+	}
+
+	// Sum up problems from all operations, excluding duplicates
+	seen := make(map[string]bool)
+	result := make([]view.AIApiDocCatProblem, 0)
+	for _, problemsEntity := range problemsList {
+		for _, problem := range problemsEntity.Problems {
+			// Create a unique key from Text, Severity, and Category
+			key := fmt.Sprintf("%s|%s|%s", problem.Text, problem.Severity, problem.Category)
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, problem)
+			}
+		}
 	}
 
 	return result, nil
@@ -323,12 +337,13 @@ func (p problemsServiceImpl) GenTaskRestOpProblems(ctx context.Context, packageI
 		Version:     version,
 		Revision:    revision,
 		OperationId: operationId,
+		FileSlug:    slug,
 		PromptHash:  promptHash,
 		Problems:    catProbl,
 	}
 	err = p.problemsRepository.SaveProblems(ctx, ent)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to save problems to database: %v", err)
+		return nil, fmt.Errorf("failed to save problems to database: %v", err)
 	}
 
 	log.Infof("time: %dms", time.Since(start).Milliseconds())

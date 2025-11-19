@@ -9,6 +9,7 @@ type Problems struct {
 	Version     string `pg:"version,pk,type:varchar,notnull"`
 	Revision    int    `pg:"revision,pk,type:integer,notnull"`
 	OperationId string `pg:"operation_id,pk,type:varchar,notnull"`
+	FileSlug    string `pg:"file_slug,type:varchar,notnull"`
 
 	PromptHash string `pg:"prompt_hash,type:varchar,notnull"`
 

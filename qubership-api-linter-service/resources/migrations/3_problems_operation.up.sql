@@ -4,6 +4,7 @@ create table problems_operation
     version      varchar not null,
     revision     integer not null,
     operation_id varchar not null,
+    file_slug    varchar not null,
     prompt_hash  varchar not null,
     problems     jsonb   not null,
 

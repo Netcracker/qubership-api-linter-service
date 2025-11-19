@@ -12,6 +12,7 @@ import (
 type ProblemsRepository interface {
 	SaveProblems(ctx context.Context, ent entity.Problems) error
 	GetProblems(ctx context.Context, PackageId string, Version string, Revision int, OperationId string) (entity.Problems, error)
+	GetProblemsForDoc(ctx context.Context, PackageId string, Version string, Revision int, slug string) ([]entity.Problems, error)
 }
 
 func NewProblemsRepository(cp db.ConnectionProvider) ProblemsRepository {
@@ -20,6 +21,23 @@ func NewProblemsRepository(cp db.ConnectionProvider) ProblemsRepository {
 
 type problemsRepositoryImpl struct {
 	cp db.ConnectionProvider
+}
+
+func (p problemsRepositoryImpl) GetProblemsForDoc(ctx context.Context, PackageId string, Version string, Revision int, slug string) ([]entity.Problems, error) {
+	var results []entity.Problems
+	err := p.cp.GetConnection().ModelContext(ctx, &results).
+		Where("package_id = ?", PackageId).
+		Where("version = ?", Version).
+		Where("revision = ?", Revision).
+		Where("file_slug = ?", slug).
+		Select()
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []entity.Problems{}, nil
+		}
+		return nil, err
+	}
+	return results, nil
 }
 
 func (p problemsRepositoryImpl) SaveProblems(ctx context.Context, ent entity.Problems) error {
