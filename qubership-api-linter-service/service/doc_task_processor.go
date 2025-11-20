@@ -454,14 +454,17 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 
 	// Run scoring async after linting
 	wg := sync.WaitGroup{}
+	scoringSemaphore := make(chan struct{}, 30)
 	for _, opIt := range docDetails.Operations {
 		op := opIt
 		opStatus := opStatusMap[op.OperationId]
 
 		if opStatus == view.StatusSuccess {
+			scoringSemaphore <- struct{}{}
 			wg.Add(1)
 			utils.SafeAsync(func() {
 				defer wg.Done()
+				defer func() { <-scoringSemaphore }()
 				operation := opDataMap[op.OperationId]
 				opSummary := opSummaryMap[op.OperationId]
 				score, err := d.scoringService.MakeRestOpScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, op.OperationId, string(operation.Data), opSummary)
@@ -476,6 +479,7 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 			log.Warnf("Scoring not calculated for operation %s (task id = %s) since status=%s", op.OperationId, task.Id, opStatus)
 		}
 	}
+	close(scoringSemaphore)
 	wg.Wait()
 
 	return operations, operationResults, nil
