@@ -203,7 +203,9 @@ func (p problemsServiceImpl) GetVersionIssues(ctx context.Context, packageId str
 
 func (p problemsServiceImpl) GenTaskRestDocProblems(ctx context.Context, packageId string, version string, revision int, slug string, docData string) ([]view.AIApiDocCatProblem, error) {
 	start := time.Now()
+	log.Infof("Run detect problems with openai client for doc %s %s@%d %s", packageId, version, revision, slug)
 	problResp, _, err := p.llmClient.GenerateProblems(ctx, docData)
+	log.Infof("finished detect problems with openai client for doc %s %s@%d %s, it took %dms", packageId, version, revision, slug, time.Since(start).Milliseconds())
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +290,9 @@ func (p problemsServiceImpl) GetDocProblems(ctx context.Context, packageId strin
 
 func (p problemsServiceImpl) GenTaskRestOpProblems(ctx context.Context, packageId string, version string, revision int, slug string, operationId string, opData string) ([]view.AIApiDocCatProblem, error) {
 	start := time.Now()
+	log.Infof("Run detect problems with openai client for operation %s %s@%d %s", packageId, version, revision, operationId)
 	problResp, promptHash, err := p.llmClient.GenerateProblems(ctx, opData)
+	log.Infof("finished detect problems with openai client for operation %s %s@%d %s, it took %dms", packageId, version, revision, operationId, time.Since(start).Milliseconds())
 	if err != nil {
 		return nil, err
 	}

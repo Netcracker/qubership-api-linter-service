@@ -110,7 +110,6 @@ When determining the entity name, use TMF SID and TMF Open API notation, selecti
 List identified issues in json format. Avoid any other output.`
 
 func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, string, error) {
-	start := time.Now()
 	// TODO: parametrization?
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(defaultGenerateProblemsPrompt),
@@ -123,8 +122,6 @@ func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]v
 		Strict: openai.Bool(true),
 	}
 
-	log.Infof("run detect problems with openai client")
-
 	chat, err := l.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Messages: messages,
 		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
@@ -132,7 +129,7 @@ func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]v
 		},
 		Model: l.model,
 	})
-	log.Infof("finished detect problems with openai client, it took %dms", time.Since(start).Milliseconds())
+
 	if err != nil {
 		return nil, "", err
 	}

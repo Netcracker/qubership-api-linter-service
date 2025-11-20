@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -88,7 +89,6 @@ func (d docTaskProcessorImpl) processTask() bool {
 	}
 	if task != nil {
 		d.processDocTask(secctx.MakeSysadminContext(context.Background()), *task)
-		d.writeAsyncTestLog(task.Id)
 		return true
 	}
 	return false
@@ -340,6 +340,10 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 		return operations, operationResults, fmt.Errorf("document details not found")
 	}
 
+	opStatusMap := map[string]view.LintedDocumentStatus{}
+	opDataMap := map[string]view.Operation{}
+	opSummaryMap := map[string]view.SpectralResultSummary{}
+
 	for _, op := range docDetails.Operations {
 		opStatus := view.StatusSuccess
 		opDetails := ""
@@ -359,6 +363,8 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 			opStatus = view.StatusError
 			opDetails = "operation not found"
 		} else {
+			opDataMap[op.OperationId] = *operation
+
 			// Write operation data to temp file
 			// Sanitize operation ID for file name (replace invalid characters)
 			safeOpId := strings.ReplaceAll(op.OperationId, "/", "_")
@@ -390,6 +396,7 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 								opDetails = fmt.Sprintf("error unmarshalling operation result: %s", err)
 							} else {
 								opSummary = calculateSpectralSummary(opReport)
+								opSummaryMap[op.OperationId] = opSummary
 								sumJson, err := json.Marshal(opSummary)
 								if err != nil {
 									opStatus = view.StatusError
@@ -405,18 +412,6 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 						}
 					}
 				}
-			}
-		}
-
-		// TODO: async!
-		// Generate score for operation if successful
-		if opStatus == view.StatusSuccess && operation != nil {
-			score, err := d.scoringService.MakeRestOpScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, op.OperationId, string(operation.Data), opSummary)
-			if err != nil {
-				// Do not fail the task, just log the warning
-				log.Warnf("Failed to generate score for operation %s (task id = %s): %s", op.OperationId, task.Id, err)
-			} else {
-				log.Infof("Generated score for operation %s (task id = %s), score = %+v", op.OperationId, task.Id, score)
 			}
 		}
 
@@ -454,29 +449,34 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 			}
 			operationResults = append(operationResults, opResultEnt)
 		}
+		opStatusMap[op.OperationId] = opStatus
 	}
+
+	// Run scoring async after linting
+	wg := sync.WaitGroup{}
+	for _, opIt := range docDetails.Operations {
+		op := opIt
+		opStatus := opStatusMap[op.OperationId]
+
+		if opStatus == view.StatusSuccess {
+			wg.Add(1)
+			utils.SafeAsync(func() {
+				defer wg.Done()
+				operation := opDataMap[op.OperationId]
+				opSummary := opSummaryMap[op.OperationId]
+				score, err := d.scoringService.MakeRestOpScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, op.OperationId, string(operation.Data), opSummary)
+				if err != nil {
+					// Do not fail the task, just log the warning
+					log.Warnf("Failed to generate score for operation %s (task id = %s): %s", op.OperationId, task.Id, err)
+				} else {
+					log.Infof("Generated score for operation %s (task id = %s), score = %+v", op.OperationId, task.Id, score)
+				}
+			})
+		} else {
+			log.Warnf("Scoring not calculated for operation %s (task id = %s) since status=%s", op.OperationId, task.Id, opStatus)
+		}
+	}
+	wg.Wait()
 
 	return operations, operationResults, nil
-}
-
-// TODO: temp! just for testing!
-func (d docTaskProcessorImpl) writeAsyncTestLog(taskId string) {
-	enabled := os.Getenv("TASK_LOG")
-	if enabled == "" {
-		return
-	}
-	fileName := "doc_task_log_" + d.executorId + ".txt"
-
-	// Open the file in append mode, create it if it doesn't exist, with write-only permissions
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Errorf("failed to open test log entry file %s", fileName)
-		return
-	}
-	defer file.Close()
-
-	if _, err := file.WriteString(taskId + "\n"); err != nil {
-		log.Errorf("failed to write test log entry to file %s", fileName)
-		return
-	}
 }
