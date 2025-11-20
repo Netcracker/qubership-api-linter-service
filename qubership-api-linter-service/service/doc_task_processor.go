@@ -259,7 +259,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		LinterVersion := d.spectralExecutor.GetLinterVersion()
 		log.Tracef("Spectral linter version is %s", LinterVersion)
 
-		if status == view.StatusSuccess {
+		/*if status == view.StatusSuccess {
 			score, err := d.scoringService.MakeRestDocScore(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug, string(data), summary)
 			if err != nil {
 				//status = view.StatusError // no, do not fail the task
@@ -269,7 +269,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 				// TODO: save scoring result!
 				log.Infof("Generated score for task id = %s, score = %+v", task.Id, score)
 			}
-		}
+		}*/
 
 		docEnt := entity.LintedDocument{
 			PackageId:         task.PackageId,

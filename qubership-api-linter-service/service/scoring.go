@@ -217,7 +217,7 @@ func (s *scoringServiceImpl) StartMakeVersionScore(ctx context.Context, packageI
 				s.mutex.Unlock()
 				return
 			}
-			data, err := s.apihubClient.GetDocumentRawData(asyncCtx, packageId, version, doc.Slug)
+			/*data, err := s.apihubClient.GetDocumentRawData(asyncCtx, packageId, version, doc.Slug)
 			if err != nil {
 				log.Errorf("get raw doc: %v", err)
 				s.mutex.Lock()
@@ -245,7 +245,7 @@ func (s *scoringServiceImpl) StartMakeVersionScore(ctx context.Context, packageI
 				}
 				s.mutex.Unlock()
 				return
-			}
+			}*/
 			s.scoreOperationsForDocument(asyncCtx, packageId, version, doc)
 		}
 		s.mutex.Lock()
