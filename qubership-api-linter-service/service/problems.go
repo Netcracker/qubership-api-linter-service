@@ -215,38 +215,7 @@ func (p problemsServiceImpl) GenTaskRestDocProblems(ctx context.Context, package
 		return nil, err
 	}
 
-	slices.SortStableFunc(catProbl, func(a, b view.AIApiDocCatProblem) int {
-		switch a.Severity {
-		case view.PSError:
-			switch b.Severity {
-			case view.PSError:
-				return 0
-			case view.PSWarning:
-				return -1
-			case view.PSInfo:
-				return -1
-			}
-		case view.PSWarning:
-			switch b.Severity {
-			case view.PSError:
-				return 1
-			case view.PSWarning:
-				return 0
-			case view.PSInfo:
-				return -1
-			}
-		case view.PSInfo:
-			switch b.Severity {
-			case view.PSError:
-				return 1
-			case view.PSWarning:
-				return 1
-			case view.PSInfo:
-				return 0
-			}
-		}
-		return 0
-	})
+	slices.SortStableFunc(catProbl, compareProblemsBySeverity)
 
 	key := packageId + "|" + fmt.Sprintf("%s@%d", version, revision) + "|" + slug
 	p.storage[key] = catProbl
@@ -285,7 +254,35 @@ func (p problemsServiceImpl) GetDocProblems(ctx context.Context, packageId strin
 		}
 	}
 
+	slices.SortStableFunc(result, compareProblemsBySeverity)
+
 	return result, nil
+}
+
+var severityOrder = map[string]int{
+	view.PSError:   0,
+	view.PSWarning: 1,
+	view.PSInfo:    2,
+}
+
+func compareProblemsBySeverity(a, b view.AIApiDocCatProblem) int {
+	aw, ok := severityOrder[a.Severity]
+	if !ok {
+		aw = len(severityOrder)
+	}
+	bw, ok := severityOrder[b.Severity]
+	if !ok {
+		bw = len(severityOrder)
+	}
+
+	switch {
+	case aw < bw:
+		return -1
+	case aw > bw:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (p problemsServiceImpl) GenTaskRestOpProblems(ctx context.Context, packageId string, version string, revision int, slug string, operationId string, opData string) ([]view.AIApiDocCatProblem, error) {

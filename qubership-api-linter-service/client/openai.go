@@ -65,8 +65,9 @@ func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, erro
 	opts = append(opts, option.WithHTTPClient(&cl))
 
 	return &OAIClientImpl{
-		client:                 openai.NewClient(opts...),
-		model:                  openAIModel,
+		client: openai.NewClient(opts...),
+		model:  openAIModel,
+
 		generateProblemsPrompt: defaultGenerateProblemsPrompt,
 		fixProblemsPrompt:      defaultFixProblemsPrompt,
 	}, nil
@@ -83,6 +84,7 @@ type OAIClientImpl struct {
 var IAProblemsOutputResponseSchema = GenerateSchema[view.IAProblemsOutput]()
 var IACatProblemsOutputResponseSchema = GenerateSchema[view.AIApiDocCatProblemsOutput]()
 
+// When determining the entity name, use TMF SID and TMF Open API notation, selecting names that align with these specifications when applicable.
 const defaultGenerateProblemsPrompt = `You need to analyze the following OpenApi document by the following criteria:
 1. Clarity and Completeness of Descriptions
 What it measures: The presence, quality, and usefulness of the description fields for paths, operations, parameters, and response schemas.
@@ -106,7 +108,6 @@ LLM Analysis: Beyond just having a security scheme defined (e.g., type: http, sc
 Scoring: A score based on the presence and comprehensiveness of the security scheme descriptions.
 
 Severity in deprecated operations should not be higher than warning.
-When determining the entity name, use TMF SID and TMF Open API notation, selecting names that align with these specifications when applicable.
 List identified issues in json format. Avoid any other output.`
 
 func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]view.AIApiDocProblem, string, error) {
@@ -122,11 +123,19 @@ func (l OAIClientImpl) GenerateProblems(ctx context.Context, docStr string) ([]v
 		Strict: openai.Bool(true),
 	}
 
+	reasoningEffort := ""
+	if l.model == openai.ChatModelGPT5 {
+		reasoningEffort = string(openai.ReasoningEffortMinimal)
+	}
+
 	chat, err := l.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+
 		Messages: messages,
 		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{JSONSchema: schemaParam},
 		},
+		ReasoningEffort: openai.ReasoningEffort(reasoningEffort),
+		//Verbosity:       openai.ChatCompletionNewParamsVerbosityLow,
 		Model: l.model,
 	})
 

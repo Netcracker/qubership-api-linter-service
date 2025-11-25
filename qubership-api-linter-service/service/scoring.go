@@ -286,13 +286,87 @@ func (s *scoringServiceImpl) GetRestDocScoringData(ctx context.Context, packageI
 		return nil, err
 	}
 
-	key := packageId + "|" + fmt.Sprintf("%s@%d", ver, rev) + "|" + slug
-	res := s.storage[key]
-
-	if res.Details == nil {
-		res.Details = []view.ScoreDetail{}
+	// Collect operation scores for the document
+	opScores, err := s.scoringRepository.GetScoresForDoc(ctx, packageId, ver, rev, slug)
+	if err != nil {
+		return nil, err
 	}
-	return &res, nil
+
+	result := view.Score{
+		Details: []view.ScoreDetail{},
+	}
+
+	if len(opScores) == 0 {
+		return &result, nil
+	}
+
+	detailMap := make(map[view.ScoreName]view.Grade)
+	goodOrAcceptable := 0
+	totalOps := 0
+	hasAcceptable := false
+	hasBad := false
+
+	for _, opScore := range opScores {
+		score := opScore.Score
+		totalOps++
+
+		switch score.OverallScore {
+		case view.Good:
+			goodOrAcceptable++
+		case view.Acceptable:
+			goodOrAcceptable++
+			hasAcceptable = true
+		case view.Bad:
+			hasBad = true
+		}
+
+		for _, detail := range score.Details {
+			current, exists := detailMap[detail.Name]
+			if !exists || isWorseGrade(detail.Value, current) {
+				detailMap[detail.Name] = detail.Value
+			}
+		}
+	}
+
+	// Calculate percentage of operations with Good or Acceptable grades
+	percentage := 0
+	if totalOps > 0 {
+		percentage = goodOrAcceptable * 100 / totalOps
+	}
+	result.DigitalScore = percentage
+
+	switch {
+	case percentage < 50:
+		result.OverallScore = view.Bad
+	case percentage < 70:
+		result.OverallScore = view.Acceptable
+	default:
+		if hasAcceptable || hasBad {
+			result.OverallScore = view.Acceptable
+		} else {
+			result.OverallScore = view.Good
+		}
+	}
+
+	result.Details = make([]view.ScoreDetail, 0, len(detailMap))
+	for name, grade := range detailMap {
+		result.Details = append(result.Details, view.ScoreDetail{
+			Name:  name,
+			Value: grade,
+		})
+	}
+
+	return &result, nil
+}
+
+func isWorseGrade(newGrade, currentGrade view.Grade) bool {
+	gradeWeight := map[view.Grade]int{
+		view.Good:       0,
+		view.Acceptable: 1,
+		view.Bad:        2,
+	}
+
+	return gradeWeight[newGrade] > gradeWeight[currentGrade]
 }
 
 func (s *scoringServiceImpl) MakeRestDocScore(ctx context.Context, packageId string, version string, slug string, docData string, lintSummary view.SpectralResultSummary) (*view.Score, error) {
@@ -633,7 +707,7 @@ func (s *scoringServiceImpl) MakeRestOpScore(ctx context.Context, packageId stri
 		return nil, err
 	}
 
-	score := CalculateScore(lintSummary, problems)
+	score := calculateOperationScore(lintSummary, problems)
 	result.DigitalScore = score
 
 	problGrade := view.Good
