@@ -454,7 +454,7 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 
 	// Run scoring async after linting
 	wg := sync.WaitGroup{}
-	scoringSemaphore := make(chan struct{}, 500)
+	scoringSemaphore := make(chan struct{}, 50)
 	for _, opIt := range docDetails.Operations {
 		op := opIt
 		opStatus := opStatusMap[op.OperationId]
