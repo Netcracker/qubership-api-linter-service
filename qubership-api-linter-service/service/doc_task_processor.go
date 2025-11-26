@@ -411,6 +411,7 @@ func (d docTaskProcessorImpl) processDocOperations(ctx context.Context, task ent
 							}
 						}
 					}
+					log.Infof("Finished processing operation %s (task id = %s) for package %s, version %s@%d by spectral. Status = %s, details = %s", op.OperationId, task.Id, task.PackageId, task.Version, task.Revision, opStatus, opDetails)
 				}
 			}
 		}
