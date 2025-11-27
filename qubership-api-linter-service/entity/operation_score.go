@@ -3,7 +3,7 @@ package entity
 import "github.com/Netcracker/qubership-api-linter-service/view"
 
 type OperationScore struct {
-	tableName struct{} `pg:"scoring_operation"`
+	tableName struct{} `pg:"scoring_operation,alias:scoring_operation"`
 
 	PackageId   string `pg:"package_id,pk,type:varchar,notnull"`
 	Version     string `pg:"version,pk,type:varchar,notnull"`

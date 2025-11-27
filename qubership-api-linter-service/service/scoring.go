@@ -333,18 +333,21 @@ func (s *scoringServiceImpl) GetRestDocScoringData(ctx context.Context, packageI
 	if totalOps > 0 {
 		percentage = goodOrAcceptable * 100 / totalOps
 	}
-	result.DigitalScore = percentage
-
+	
 	switch {
 	case percentage < 50:
 		result.OverallScore = view.Bad
+		result.DigitalScore = 0
 	case percentage < 70:
 		result.OverallScore = view.Acceptable
+		result.DigitalScore = 1
 	default:
 		if hasAcceptable || hasBad {
 			result.OverallScore = view.Acceptable
+			result.DigitalScore = 1
 		} else {
 			result.OverallScore = view.Good
+			result.DigitalScore = 2
 		}
 	}
 

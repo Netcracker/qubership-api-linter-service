@@ -23,17 +23,33 @@ type scoringRepositoryImpl struct {
 	cp db.ConnectionProvider
 }
 
+/*
+	err = d.cp.GetConnection().Model(changedVersion).
+		ColumnExpr(`migrated_version_changes.*,
+				b.metadata->>'build_type' build_type,
+				b.metadata->>'previous_version' previous_version,
+				b.metadata->>'previous_version_package_id' previous_version_package_id`).
+		Join("inner join build b").
+		JoinOn("migrated_version_changes.build_id = b.build_id").
+		Where("migrated_version_changes.migration_id = ?", migrationId).
+		Where("? = any(unique_changes)", change).
+		Order("build_id").
+		Limit(1).
+		Select()
+*/
+
 func (s scoringRepositoryImpl) GetScoresForDoc(ctx context.Context, PackageId string, Version string, Revision int, slug string) ([]entity.OperationScore, error) {
 	var results []entity.OperationScore
+
 	err := s.cp.GetConnection().ModelContext(ctx, &results).
-		TableExpr("scoring_operation AS score").
-		ColumnExpr("score.*").
-		Join("JOIN linted_operation lo ON lo.package_id = score.package_id AND lo.version = score.version AND lo.revision = score.revision AND lo.operation_id = score.operation_id").
-		Where("score.package_id = ?", PackageId).
-		Where("score.version = ?", Version).
-		Where("score.revision = ?", Revision).
+		ColumnExpr("scoring_operation.*").
+		Join("inner join linted_operation lo ").
+		JoinOn("lo.package_id = scoring_operation.package_id AND lo.version = scoring_operation.version AND lo.revision = scoring_operation.revision AND lo.operation_id = scoring_operation.operation_id").
+		Where("scoring_operation.package_id = ?", PackageId).
+		Where("scoring_operation.version = ?", Version).
+		Where("scoring_operation.revision = ?", Revision).
 		Where("lo.slug = ?", slug).
-		Order("score.operation_id ASC").
+		Order("scoring_operation.operation_id ASC").
 		Select()
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

@@ -210,7 +210,9 @@ func (p problemsServiceImpl) GenTaskRestDocProblems(ctx context.Context, package
 		return nil, err
 	}
 
+	log.Infof("run categorize problems with openai client for doc %s %s@%d %s", packageId, version, revision, slug)
 	catProbl, err := p.llmClient.CategorizeProblems(ctx, problResp)
+	log.Infof("finished categorize problems with openai client for doc %s %s@%d %s", packageId, version, revision, slug)
 	if err != nil {
 		return nil, err
 	}
@@ -289,12 +291,15 @@ func (p problemsServiceImpl) GenTaskRestOpProblems(ctx context.Context, packageI
 	start := time.Now()
 	log.Infof("Run detect problems with openai client for operation %s %s@%d %s", packageId, version, revision, operationId)
 	problResp, promptHash, err := p.llmClient.GenerateProblems(ctx, opData)
-	log.Infof("finished detect problems with openai client for operation %s %s@%d %s, it took %dms", packageId, version, revision, operationId, time.Since(start).Milliseconds())
+	log.Infof("Finished detect problems with openai client for operation %s %s@%d %s, it took %dms", packageId, version, revision, operationId, time.Since(start).Milliseconds())
 	if err != nil {
 		return nil, err
 	}
 
+	startCat := time.Now()
+	log.Infof("Run categorize problems with openai client for operation %s %s@%d %s", packageId, version, revision, operationId)
 	catProbl, err := p.llmClient.CategorizeProblems(ctx, problResp)
+	log.Infof("Finished categorize problems with openai client for operation %s %s@%d %s, it took %dms", packageId, version, revision, operationId, time.Since(startCat).Milliseconds())
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +352,6 @@ func (p problemsServiceImpl) GenTaskRestOpProblems(ctx context.Context, packageI
 		return nil, fmt.Errorf("failed to save problems to database: %v", err)
 	}
 
-	log.Infof("time: %dms", time.Since(start).Milliseconds())
 	log.Infof("problems: %+v", problResp)
 
 	return catProbl, nil
