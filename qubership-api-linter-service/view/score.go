@@ -13,9 +13,9 @@ type ScoreDetail struct {
 
 type Grade string
 
-const Good Grade = "Good"
-const Acceptable = "Acceptable"
-const Bad Grade = "Bad"
+const Good Grade = "Passed"
+const Acceptable = "Passed conditionally (>50% && <70% passing)"
+const Bad Grade = "Blocked"
 
 type ScoreName string
 
