@@ -23,7 +23,7 @@ paths:
         - Ruleset Management
       summary: Get a list of rulesets
       description: >
-        Returns a sorted list of rulesets.  
+        Returns a sorted list of rulesets.
           The sorting follows a strict order:
             1. The currently active ruleset (always appears first).
             2. Rulesets that have never been activated (in order of creation).
@@ -406,7 +406,7 @@ paths:
         - Validation Operations
       summary: Run manual validation for a package version
       description: >
-        Manually run validation for a specific package version. 
+        Manually run validation for a specific package version.
         This is used when linter service was deployed after version publication.
         This operation is available only to users with publication rights.
       operationId: runPackageVersionValidation
@@ -523,13 +523,10 @@ paths:
         "200":
           description: Success
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
-                properties:
-                  level:
-                    type: string
-                    description: Current log level
+                type: string
+                description: Current log level
         "401":
           description: Unauthorized
           content:
@@ -779,45 +776,45 @@ components:
         documents:
           type: array
           items:
-            - type: object
-              properties:
-                status:
-                  type: string
-                  enum:
-                    - success
-                    - error
-                details:
-                  type: string
-                slug:
-                  type: string
-                apiType:
-                  description: Type of the API.
-                  type: string
-                  enum:
-                    - rest
-                documentName:
-                  type: string
-                rulesetId:
-                  type: string
-                issuesSummary:
-                  type: object
-                  properties:
-                    error:
-                      type: integer
-                    warning:
-                      type: integer
-                    info:
-                      type: integer
-                  required:
-                    - error
-                    - warning
-                    - info
-              required:
-                - status
-                - slug
-                - apiType
-                - documentName
-                - rulesetId
+            type: object
+            properties:
+              status:
+                type: string
+                enum:
+                  - success
+                  - error
+              details:
+                type: string
+              slug:
+                type: string
+              apiType:
+                description: Type of the API.
+                type: string
+                enum:
+                  - rest
+              documentName:
+                type: string
+              rulesetId:
+                type: string
+              issuesSummary:
+                type: object
+                properties:
+                  error:
+                    type: integer
+                  warning:
+                    type: integer
+                  info:
+                    type: integer
+                required:
+                  - error
+                  - warning
+                  - info
+            required:
+              - status
+              - slug
+              - apiType
+              - documentName
+              - rulesetId
         rulesets:
           type: array
           items:
