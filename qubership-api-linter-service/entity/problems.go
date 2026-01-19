@@ -2,7 +2,7 @@ package entity
 
 import "github.com/Netcracker/qubership-api-linter-service/view"
 
-type Problems struct {
+type OperationProblems struct {
 	tableName struct{} `pg:"problems_operation"`
 
 	PackageId   string `pg:"package_id,pk,type:varchar,notnull"`

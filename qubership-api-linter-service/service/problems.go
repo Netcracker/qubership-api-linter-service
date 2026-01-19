@@ -16,16 +16,16 @@ import (
 )
 
 type ProblemsService interface {
-	GenTaskRestDocProblems(ctx context.Context, packageId string, version string, revision int, slug string, docData string) ([]view.AIApiDocCatProblem, error)
+	MakeTaskRestDocProblems(ctx context.Context, packageId string, version string, revision int, slug string, docData string) ([]view.AIApiDocCatProblem, error)
 	GetDocProblems(ctx context.Context, packageId string, version string, slug string) ([]view.AIApiDocCatProblem, error)
-	GenTaskRestOpProblems(ctx context.Context, packageId string, version string, revision int, slug string, operationId string, opData string) ([]view.AIApiDocCatProblem, error)
+	MakeTaskRestOpProblems(ctx context.Context, packageId string, version string, revision int, slug string, operationId string, opData string) ([]view.AIApiDocCatProblem, error)
 	GetOpProblems(ctx context.Context, packageId string, version string, slug string, operationId string) ([]view.AIApiDocCatProblem, error)
 
+	MakeVersionProblems(ctx context.Context, packageId string, version string) error
 	GetVersionIssues(ctx context.Context, packageId string, version string) (view.VersionIssues, error)
 }
 
 func NewProblemsService(apihubClient client.ApihubClient, llmClient client.LLMClient, operationResultRepository repository.OperationResultRepository, versionResultRepository repository.VersionResultRepository, problemsRepository repository.ProblemsRepository, localFileStore bool) ProblemsService {
-
 	storage := make(map[string][]view.AIApiDocCatProblem)
 
 	if localFileStore {
@@ -59,6 +59,53 @@ type problemsServiceImpl struct {
 
 	localFileStore bool
 	storage        map[string][]view.AIApiDocCatProblem
+}
+
+func (p problemsServiceImpl) MakeVersionProblems(ctx context.Context, packageId string, version string) error {
+	ver, rev, err := getVersionAndRevision(ctx, p.apihubClient, packageId, version)
+	if err != nil {
+		return err
+	}
+
+	operationProblems, err := p.problemsRepository.GetOperationProblemsForVersion(ctx, packageId, ver, rev)
+	if err != nil {
+		return fmt.Errorf("failed to get problems for version: %v", err)
+	}
+
+	var problems []view.AIApiDocCatProblem
+	uniqueText := map[string]struct{}{}
+
+	for _, op := range operationProblems {
+		for _, problem := range op.Problems {
+			if _, exists := uniqueText[problem.Text]; !exists {
+				uniqueText[problem.Text] = struct{}{}
+				problems = append(problems, problem)
+			}
+		}
+	}
+
+	mergedProblems, err := p.llmClient.MergeProblems(ctx, problems)
+	if err != nil {
+		return fmt.Errorf("failed to merge problems: %v", err)
+	}
+
+	// Sort merged problems by severity
+	slices.SortStableFunc(mergedProblems, compareProblemsBySeverity)
+
+	ent := entity.ProblemsVersion{
+		PackageId: packageId,
+		Version:   ver,
+		Revision:  rev,
+		Problems:  mergedProblems,
+	}
+	err = p.problemsRepository.SaveProblemsForVersion(ctx, ent)
+	if err != nil {
+		return fmt.Errorf("failed to save problems to database: %v", err)
+	}
+
+	log.Infof("Merged %d problems into %d problems for version %s@%d", len(problems), len(mergedProblems), ver, rev)
+
+	return nil
 }
 
 func (p problemsServiceImpl) GetVersionIssues(ctx context.Context, packageId string, version string) (view.VersionIssues, error) {
@@ -152,56 +199,23 @@ func (p problemsServiceImpl) GetVersionIssues(ctx context.Context, packageId str
 			})
 		}
 
+		// TODO: need to deduplicate the problems
 		result.LinterIssues = append(result.LinterIssues, view.OperationResult{
 			Issues:             issues,
 			ValidatedOperation: validatedOp,
 		})
 	}
 
-	// Collect AI problems for all operations (including those without linter results)
-	for _, op := range operations {
-		// Filter by revision to get only operations for the specific revision
-		if op.Revision != rev {
-			continue
-		}
-
-		// Try to get from database first
-		ent, err := p.problemsRepository.GetProblems(ctx, packageId, ver, rev, op.OperationId)
-		if err != nil {
-			log.Warnf("Failed to get problems from database for operation %s: %v", op.OperationId, err)
-		} else if len(ent.Problems) > 0 {
-			result.AIProblems = append(result.AIProblems, ent.Problems...)
-			continue
-		}
-
-		// Fallback to local file store if enabled
-		if p.localFileStore {
-			opKey := packageId + "|" + fmt.Sprintf("%s@%d", ver, rev) + "|" + op.Slug + "|" + op.OperationId
-			if aiProblems, exists := p.storage[opKey]; exists {
-				result.AIProblems = append(result.AIProblems, aiProblems...)
-			}
-		}
-	}
-
-	// Get all documents for the version to collect AI problems for documents
-	_, docs, err := p.versionResultRepository.GetVersionAndDocsSummary(ctx, packageId, ver, rev)
+	aiProblems, err := p.problemsRepository.GetProblemsForVersion(ctx, packageId, ver, rev)
 	if err != nil {
-		log.Warnf("Failed to get documents for version: %v", err)
-		// Continue without document AI problems if we can't get documents
-	} else {
-		// Collect AI problems for all documents
-		for _, doc := range docs {
-			key := packageId + "|" + fmt.Sprintf("%s@%d", ver, rev) + "|" + doc.Slug
-			if aiProblems, exists := p.storage[key]; exists {
-				result.AIProblems = append(result.AIProblems, aiProblems...)
-			}
-		}
+		return result, err
 	}
+	result.AIProblems = aiProblems.Problems
 
 	return result, nil
 }
 
-func (p problemsServiceImpl) GenTaskRestDocProblems(ctx context.Context, packageId string, version string, revision int, slug string, docData string) ([]view.AIApiDocCatProblem, error) {
+func (p problemsServiceImpl) MakeTaskRestDocProblems(ctx context.Context, packageId string, version string, revision int, slug string, docData string) ([]view.AIApiDocCatProblem, error) {
 	start := time.Now()
 	log.Infof("Run detect problems with openai client for doc %s %s@%d %s", packageId, version, revision, slug)
 	problResp, _, err := p.llmClient.GenerateProblems(ctx, docData)
@@ -287,7 +301,7 @@ func compareProblemsBySeverity(a, b view.AIApiDocCatProblem) int {
 	}
 }
 
-func (p problemsServiceImpl) GenTaskRestOpProblems(ctx context.Context, packageId string, version string, revision int, slug string, operationId string, opData string) ([]view.AIApiDocCatProblem, error) {
+func (p problemsServiceImpl) MakeTaskRestOpProblems(ctx context.Context, packageId string, version string, revision int, slug string, operationId string, opData string) ([]view.AIApiDocCatProblem, error) {
 	start := time.Now()
 	log.Infof("Run detect problems with openai client for operation %s %s@%d %s", packageId, version, revision, operationId)
 	problResp, promptHash, err := p.llmClient.GenerateProblems(ctx, opData)
@@ -338,7 +352,7 @@ func (p problemsServiceImpl) GenTaskRestOpProblems(ctx context.Context, packageI
 	})
 
 	// Save to database
-	ent := entity.Problems{
+	ent := entity.OperationProblems{
 		PackageId:   packageId,
 		Version:     version,
 		Revision:    revision,

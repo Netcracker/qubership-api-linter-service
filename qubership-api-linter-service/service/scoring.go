@@ -333,7 +333,7 @@ func (s *scoringServiceImpl) GetRestDocScoringData(ctx context.Context, packageI
 	if totalOps > 0 {
 		percentage = goodOrAcceptable * 100 / totalOps
 	}
-	
+
 	switch {
 	case percentage < 50:
 		result.OverallScore = view.Bad
@@ -395,7 +395,7 @@ func (s *scoringServiceImpl) MakeRestDocScore(ctx context.Context, packageId str
 		Value: lintGrade,
 	})
 
-	problems, err := s.problemsService.GenTaskRestDocProblems(ctx, packageId, ver, rev, slug, docData)
+	problems, err := s.problemsService.MakeTaskRestDocProblems(ctx, packageId, ver, rev, slug, docData)
 	if err != nil {
 		return nil, err
 	}
@@ -548,7 +548,7 @@ func (s *scoringServiceImpl) MakeEnhancedRestDocScore(ctx context.Context, packa
 		Value: lintGrade,
 	})
 
-	problems, err := s.problemsService.GenTaskRestDocProblems(ctx, packageId, ver, rev, slug, docData)
+	problems, err := s.problemsService.MakeTaskRestDocProblems(ctx, packageId, ver, rev, slug, docData)
 	if err != nil {
 		return nil, err
 	}
@@ -705,7 +705,7 @@ func (s *scoringServiceImpl) MakeRestOpScore(ctx context.Context, packageId stri
 		Value: lintGrade,
 	})
 
-	problems, err := s.problemsService.GenTaskRestOpProblems(ctx, packageId, ver, rev, slug, operationId, opData)
+	problems, err := s.problemsService.MakeTaskRestOpProblems(ctx, packageId, ver, rev, slug, operationId, opData)
 	if err != nil {
 		return nil, err
 	}

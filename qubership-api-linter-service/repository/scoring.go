@@ -23,21 +23,6 @@ type scoringRepositoryImpl struct {
 	cp db.ConnectionProvider
 }
 
-/*
-	err = d.cp.GetConnection().Model(changedVersion).
-		ColumnExpr(`migrated_version_changes.*,
-				b.metadata->>'build_type' build_type,
-				b.metadata->>'previous_version' previous_version,
-				b.metadata->>'previous_version_package_id' previous_version_package_id`).
-		Join("inner join build b").
-		JoinOn("migrated_version_changes.build_id = b.build_id").
-		Where("migrated_version_changes.migration_id = ?", migrationId).
-		Where("? = any(unique_changes)", change).
-		Order("build_id").
-		Limit(1).
-		Select()
-*/
-
 func (s scoringRepositoryImpl) GetScoresForDoc(ctx context.Context, PackageId string, Version string, Revision int, slug string) ([]entity.OperationScore, error) {
 	var results []entity.OperationScore
 

@@ -233,14 +233,10 @@ func main() {
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/problems", security.Secure(problemsController.GetProblemsData)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/files/{slug}/operations/{operationId}/problems", security.Secure(problemsController.GetOpProblemsData)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/issues", security.Secure(problemsController.GetVersionIssues)).Methods(http.MethodGet)
-	// TODO: Version Linter issues
-	// TODO: Version AI issues
 
 	r.HandleFunc("/api/v1/llm/prompts/generateProblems", security.Secure(llmTuningController.UpdateGenerateProblemsPrompt)).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/llm/prompts/fixProblems", security.Secure(llmTuningController.UpdateFixProblemsPrompt)).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/llm/model", security.Secure(llmTuningController.UpdateModel)).Methods(http.MethodPost)
-
-	// TODO: Upload temporary state via API???
 
 	// Enhancement
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/enhancedFiles/{slug}", security.Secure(enhancementController.EnhanceDoc)).Methods(http.MethodPost)
