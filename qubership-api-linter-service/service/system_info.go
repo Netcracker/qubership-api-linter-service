@@ -53,6 +53,11 @@ const (
 	NAMESPACE            = "NAMESPACE"
 
 	PRODUCTION_MODE = "PRODUCTION_MODE"
+
+	OPENAI_API_KEY       = "OPENAI_API_KEY"
+	OPENAI_API_PROXY     = "OPENAI_API_PROXY"
+	OPENAI_MODEL         = "OPENAI_MODEL"
+	ENABLE_AI_OAS_LINTER = "ENABLE_AI_OAS_LINTER"
 )
 
 type SystemInfoService interface {
@@ -80,6 +85,11 @@ type SystemInfoService interface {
 	GetOlricDiscoveryMode() string
 	GetReplicaCount() int
 	GetNamespace() string
+
+	GetOpenAIAPIKey() string
+	GetOpenAIAPIProxy() string
+	GetOpenAIModel() string
+	IsAiOasLinterEnabled() bool
 
 	SetProductionMode(apihubClient client.ApihubClient)
 	IsProductionMode() bool
@@ -124,6 +134,11 @@ func (s systemInfoServiceImpl) Init() error {
 	s.setOlricDiscoveryMode()
 	s.setReplicaCount()
 	s.setNamespace()
+
+	s.setOpenAIAPIKey()
+	s.setOpenAIAPIProxy()
+	s.setOpenAIModel()
+	s.setEnableAIOasLinter()
 
 	return nil
 }
@@ -327,6 +342,43 @@ func (s systemInfoServiceImpl) setNamespace() {
 
 func (s systemInfoServiceImpl) GetNamespace() string {
 	return s.systemInfoMap[NAMESPACE].(string)
+}
+
+func (s systemInfoServiceImpl) setOpenAIAPIKey() {
+	s.systemInfoMap[OPENAI_API_KEY] = os.Getenv(OPENAI_API_KEY)
+}
+
+func (s systemInfoServiceImpl) GetOpenAIAPIKey() string {
+	return s.systemInfoMap[OPENAI_API_KEY].(string)
+}
+
+func (s systemInfoServiceImpl) setOpenAIAPIProxy() {
+	s.systemInfoMap[OPENAI_API_PROXY] = os.Getenv(OPENAI_API_PROXY)
+}
+
+func (s systemInfoServiceImpl) GetOpenAIAPIProxy() string {
+	return s.systemInfoMap[OPENAI_API_PROXY].(string)
+}
+
+func (s systemInfoServiceImpl) setOpenAIModel() {
+	s.systemInfoMap[OPENAI_MODEL] = os.Getenv(OPENAI_MODEL)
+}
+
+func (s systemInfoServiceImpl) GetOpenAIModel() string {
+	return s.systemInfoMap[OPENAI_MODEL].(string)
+}
+
+func (s systemInfoServiceImpl) setEnableAIOasLinter() {
+	val := os.Getenv(ENABLE_AI_OAS_LINTER)
+	enabled, err := strconv.ParseBool(val)
+	if err != nil {
+		enabled = false
+	}
+	s.systemInfoMap[ENABLE_AI_OAS_LINTER] = enabled
+}
+
+func (s systemInfoServiceImpl) IsAiOasLinterEnabled() bool {
+	return s.systemInfoMap[ENABLE_AI_OAS_LINTER].(bool)
 }
 
 func (s systemInfoServiceImpl) SetProductionMode(apihubClient client.ApihubClient) {

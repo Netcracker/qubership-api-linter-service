@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
 	"github.com/Netcracker/qubership-api-linter-service/db"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 )
@@ -11,7 +12,7 @@ import (
 type VersionResultRepository interface {
 	GetLintedVersion(ctx context.Context, packageId, version string, revision int) (*entity.LintedVersion, error)
 	GetVersionAndDocsSummary(ctx context.Context, packageId, version string, revision int) (*entity.LintedVersion, []entity.LintedDocument, error)
-	GetLintedDocument(ctx context.Context, packageId, version string, revision int, slug string) (*entity.LintedDocument, error)
+	GetLintedDocuments(ctx context.Context, packageId, version string, revision int, slug string) ([]entity.LintedDocument, error)
 }
 
 func NewVersionResultRepository(cp db.ConnectionProvider) VersionResultRepository {
@@ -71,8 +72,8 @@ func (v versionResultRepositoryImpl) GetVersionAndDocsSummary(ctx context.Contex
 	return &verEnt, docs, nil
 }
 
-func (v versionResultRepositoryImpl) GetLintedDocument(ctx context.Context, packageId, version string, revision int, slug string) (*entity.LintedDocument, error) {
-	var doc entity.LintedDocument
+func (v versionResultRepositoryImpl) GetLintedDocuments(ctx context.Context, packageId, version string, revision int, slug string) ([]entity.LintedDocument, error) {
+	var doc []entity.LintedDocument
 	err := v.cp.GetConnection().ModelContext(ctx, &doc).
 		Where("package_id = ?", packageId).
 		Where("version = ?", version).
@@ -86,5 +87,5 @@ func (v versionResultRepositoryImpl) GetLintedDocument(ctx context.Context, pack
 		return nil, err
 	}
 
-	return &doc, nil
+	return doc, nil
 }

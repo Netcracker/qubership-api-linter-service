@@ -127,6 +127,14 @@ func main() {
 
 	apihubClient := client.NewApihubClient(systemInfoService.GetAPIHubUrl(), systemInfoService.GetApihubAccessToken())
 
+	oaiCl, err := client.NewOpenaiClient(
+		systemInfoService.GetOpenAIAPIKey(),
+		systemInfoService.GetOpenAIModel(),
+		systemInfoService.GetOpenAIAPIProxy())
+	if err != nil {
+		log.Panicf("Failed create openaiClient: %s", err.Error())
+	}
+
 	utils.SafeAsync(func() {
 		systemInfoService.SetProductionMode(apihubClient)
 	})
@@ -147,7 +155,7 @@ func main() {
 	versionResultRepository := repository.NewVersionResultRepository(cp)
 	lintResultRepository := repository.NewLintResultRepository(cp)
 
-	linterSelectorService := service.NewLinterSelectorService(ruleSetRepository)
+	linterSelectorService := service.NewLinterSelectorService(ruleSetRepository, systemInfoService)
 
 	versionTaskProcessor := service.NewVersionTaskProcessor(versionLintTaskRepository, docLintTaskRepository, versionResultRepository, apihubClient, linterSelectorService, executorId)
 	spectralExecutor, err := service.NewSpectralExecutor(systemInfoService.GetSpectralBinPath())
@@ -155,7 +163,9 @@ func main() {
 		log.Fatalf("Failed to create Spectral executor: %s", err.Error())
 	}
 
-	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, apihubClient, spectralExecutor, executorId)
+	aiOasExecutor := service.NewAiOasExecutor(oaiCl)
+
+	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, apihubClient, spectralExecutor, aiOasExecutor, executorId)
 
 	validationService := service.NewValidationService(versionLintTaskRepository, versionResultRepository, lintResultRepository, ruleSetRepository, docLintTaskRepository, versionTaskProcessor, apihubClient, executorId)
 	publishEventListener := service.NewPublishEventListener(olricProvider, validationService)
@@ -176,8 +186,13 @@ func main() {
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", security.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
 
 	// Validation result
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", security.Secure(validationResultController.GetValidationSummaryForVersion)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", security.Secure(validationResultController.GetValidationResultForDocument)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", security.Secure(validationResultController.GetValidationSummaryForVersion_deprecated)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v2/packages/{packageId}/versions/{version}/validation/summary", security.Secure(validationResultController.GetValidationSummaryForVersion)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", security.Secure(validationResultController.GetValidationResultForDocument_deprecated)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v2/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", security.Secure(validationResultController.GetValidationResultForDocument)).Methods(http.MethodGet)
+
+	// TODO: download issues
+	// TODO: add filters by linter and type to /details and download
 
 	// Ruleset management
 	r.HandleFunc("/api/v1/rulesets", security.Secure(rulesetController.CreateRuleset)).Methods(http.MethodPost)

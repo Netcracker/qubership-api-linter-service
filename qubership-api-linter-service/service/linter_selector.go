@@ -2,47 +2,85 @@ package service
 
 import (
 	"context"
-	"fmt"
+
 	"github.com/Netcracker/qubership-api-linter-service/repository"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 )
 
 type LinterSelectorService interface {
-	SelectLinterAndRuleset(ctx context.Context, t view.ApiType) (view.Linter, string, error)
+	SelectLintersAndRuleset(ctx context.Context, t view.ApiType) []view.LinterAndRuleset
 }
 
 type linterSelectorServiceImpl struct {
-	repo repository.RulesetRepository
+	repo              repository.RulesetRepository
+	systemInfoService SystemInfoService
 }
 
-func NewLinterSelectorService(repo repository.RulesetRepository) LinterSelectorService {
-	return &linterSelectorServiceImpl{
-		repo: repo,
-	}
-}
-
-func (l linterSelectorServiceImpl) SelectLinterAndRuleset(ctx context.Context, t view.ApiType) (view.Linter, string, error) {
-	var linter view.Linter
-	var rulesetId string
-
+func (l linterSelectorServiceImpl) SelectLintersAndRuleset(ctx context.Context, t view.ApiType) []view.LinterAndRuleset {
 	rulesets, err := l.repo.GetActiveRulesets(ctx, t)
 	if err != nil {
-		return view.UnknownLinter, "", err
+		return []view.LinterAndRuleset{{
+			Linter:    view.UnknownLinter,
+			RulesetId: "",
+			Err:       err,
+		}}
 	}
+
+	result := make([]view.LinterAndRuleset, 0)
 
 	switch t {
 	case view.OpenAPI31Type, view.OpenAPI30Type, view.OpenAPI20Type:
-		linter = view.SpectralLinter
-		rs, exists := rulesets[linter]
-		if !exists {
-			return "", "", fmt.Errorf("no active ruleset found for api type %s and linter %s", t, linter)
+		rs, exists := rulesets[view.SpectralLinter]
+		spectralRsId := ""
+		if exists {
+			spectralRsId = rs.Id
 		}
-		rulesetId = rs.Id
+		result = append(result, view.LinterAndRuleset{
+			Linter:    view.SpectralLinter,
+			RulesetId: spectralRsId,
+			Err:       nil,
+		})
+		if l.systemInfoService.IsAiOasLinterEnabled() {
+			rs, exists = rulesets[view.AiOasLinter]
+			AiOasRsId := ""
+			if exists {
+				AiOasRsId = rs.Id
+			}
+			result = append(result, view.LinterAndRuleset{
+				Linter:    view.AiOasLinter,
+				RulesetId: AiOasRsId,
+				Err:       nil,
+			})
+		}
+		break
+	case view.AsyncAPI30Type:
+		rs, exists := rulesets[view.SpectralLinter]
+		spectralRsId := ""
+		if exists {
+			spectralRsId = rs.Id
+		}
+		result = append(result, view.LinterAndRuleset{
+			Linter:    view.SpectralAsyncLinter,
+			RulesetId: spectralRsId,
+			Err:       nil,
+		})
 		break
 	default:
 		// lint of this type is not supported now
-		linter = view.UnknownLinter
+		result = append(result, view.LinterAndRuleset{
+			Linter:    view.UnknownLinter,
+			RulesetId: "",
+			Err:       nil,
+		})
+		break
 	}
 
-	return linter, rulesetId, nil
+	return result
+}
+
+func NewLinterSelectorService(repo repository.RulesetRepository, systemInfoService SystemInfoService) LinterSelectorService {
+	return &linterSelectorServiceImpl{
+		repo:              repo,
+		systemInfoService: systemInfoService,
+	}
 }

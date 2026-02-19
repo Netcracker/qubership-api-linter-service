@@ -18,6 +18,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/exception"
@@ -26,13 +29,13 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/google/uuid"
-	"net/http"
-	"time"
 )
 
 type ValidationService interface {
 	ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error)
 	GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error)
+	GetVersionSummary_deprecated(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error)
+	GetValidationResult_deprecated(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult_deprecated, error)
 	GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error)
 }
 
@@ -136,7 +139,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 		var summ *view.IssuesSummary
 
 		switch ruleset.Linter {
-		case view.SpectralLinter:
+		case view.SpectralLinter, view.SpectralAsyncLinter:
 			// calculate spectral summary
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
@@ -145,6 +148,17 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 			if summ == nil {
 				return nil, fmt.Errorf("failed to calculate spectral result summary")
 			}
+			break
+		case view.AiOasLinter:
+			// calculate summary
+			summ, err = makeSpectralSummary(resultSummary.Summary)
+			if err != nil {
+				return nil, err
+			}
+			if summ == nil {
+				return nil, fmt.Errorf("failed to calculate AI OAS result summary")
+			}
+			break
 		case view.UnknownLinter:
 			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
 		default:
@@ -173,19 +187,129 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 	return result, nil
 }
 
-func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
+func (v validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
 	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
 	}
 
-	lintedDocument, err := v.versionResultRepository.GetLintedDocument(ctx, packageId, ver, rev, slug)
+	lintedVer, lintedDocs, err := v.versionResultRepository.GetVersionAndDocsSummary(ctx, packageId, ver, rev)
 	if err != nil {
 		return nil, err
 	}
-	if lintedDocument == nil {
+	if lintedVer == nil {
+		// version is not linted (yet), need to check if lint is planned/in progress
+		varTasks, err := v.verTaskRepo.GetRunningTaskForVersion(ctx, packageId, ver, rev)
+		if err != nil {
+			return nil, err
+		}
+		if len(varTasks) == 0 {
+			return nil, nil
+		}
+		return &view.ValidationSummaryForVersion{
+			Status:    view.VersionStatusInProgress,
+			Details:   "",
+			Documents: nil,
+			Rulesets:  nil,
+		}, nil
+	}
+
+	result := &view.ValidationSummaryForVersion{
+		Status:    lintedVer.LintStatus,
+		Details:   lintedVer.LintDetails,
+		Documents: nil,
+		Rulesets:  nil,
+	}
+
+	rulesetMap, err := v.makeRulesetMap(ctx, makeRulesetIdsFromLintedDocs(lintedDocs))
+	if err != nil {
+		return nil, err
+	}
+
+	for _, doc := range lintedDocs {
+		if doc.LintStatus == view.StatusError {
+			result.Documents = append(result.Documents, view.ValidationDocument{
+				Status:       doc.LintStatus,
+				Details:      doc.LintDetails,
+				Slug:         doc.Slug,
+				ApiType:      doc.SpecificationType,
+				DocumentName: doc.FileId,
+				RulesetId:    doc.RulesetId,
+			})
+			continue
+		}
+		resultSummary, err := v.lintResultRepository.GetLintResultSummary(ctx, doc.DataHash, doc.RulesetId)
+		if err != nil {
+			return nil, err
+		}
+		if resultSummary == nil {
+			continue
+		}
+
+		ruleset, ok := rulesetMap[doc.RulesetId]
+		if !ok {
+			return nil, fmt.Errorf("ruleset with id %s is not found in cache map", doc.RulesetId)
+		}
+
+		var summ *view.IssuesSummary
+
+		switch ruleset.Linter {
+		case view.SpectralLinter, view.SpectralAsyncLinter:
+			// calculate spectral summary
+			summ, err = makeSpectralSummary(resultSummary.Summary)
+			if err != nil {
+				return nil, err
+			}
+			if summ == nil {
+				return nil, fmt.Errorf("failed to calculate spectral result summary")
+			}
+			break
+		case view.AiOasLinter:
+			continue
+		case view.UnknownLinter:
+			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
+		default:
+			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
+		}
+
+		result.Documents = append(result.Documents, view.ValidationDocument{
+			Status:       doc.LintStatus,
+			Details:      doc.LintDetails,
+			Slug:         doc.Slug,
+			ApiType:      doc.SpecificationType,
+			DocumentName: doc.FileId,
+			RulesetId:    doc.RulesetId,
+			IssuesSummary: &view.IssuesSummary{
+				Error:   summ.Error,
+				Warning: summ.Warning,
+				Info:    summ.Info,
+				Hint:    summ.Hint,
+			},
+		})
+	}
+
+	for _, val := range rulesetMap {
+		if val.Linter == view.SpectralLinter {
+			result.Rulesets = append(result.Rulesets, entity.MakeRulesetView(val))
+		}
+	}
+	return result, nil
+}
+
+func (v validationServiceImpl) GetValidationResult_deprecated(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult_deprecated, error) {
+	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
+	if err != nil {
+		return nil, err
+	}
+
+	lintedDocuments, err := v.versionResultRepository.GetLintedDocuments(ctx, packageId, ver, rev, slug)
+	if err != nil {
+		return nil, err
+	}
+	if len(lintedDocuments) == 0 {
 		return nil, nil
 	}
+	lintedDocument := &lintedDocuments[0] // just use the first one as a fallback
 
 	ruleset, err := v.rulesetRepository.GetRulesetById(ctx, lintedDocument.RulesetId)
 	if err != nil {
@@ -196,7 +320,7 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 	}
 
 	if lintedDocument.LintStatus == view.StatusError {
-		result := view.DocumentResult{
+		result := view.DocumentResult_deprecated{
 			Ruleset:           entity.MakeRulesetView(*ruleset),
 			Issues:            nil,
 			ValidatedDocument: entity.MakeValidatedDocumentView(*lintedDocument),
@@ -233,10 +357,98 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 		})
 	}
 
-	result := view.DocumentResult{
+	result := view.DocumentResult_deprecated{
 		Ruleset:           entity.MakeRulesetView(*ruleset),
 		Issues:            issues,
 		ValidatedDocument: entity.MakeValidatedDocumentView(*lintedDocument),
+	}
+
+	return &result, nil
+}
+
+func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
+	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
+	if err != nil {
+		return nil, err
+	}
+
+	lintedDocuments, err := v.versionResultRepository.GetLintedDocuments(ctx, packageId, ver, rev, slug)
+
+	if err != nil {
+		return nil, err
+	}
+	if len(lintedDocuments) == 0 {
+		return nil, nil
+	}
+
+	result := view.DocumentResult{}
+
+	for _, doc := range lintedDocuments {
+		if result.ValidatedDocument.Slug == "" {
+			result.ValidatedDocument = entity.MakeValidatedDocumentView(doc)
+		}
+
+		ruleset, err := v.rulesetRepository.GetRulesetById(ctx, doc.RulesetId)
+		if err != nil {
+			return nil, err
+		}
+		if ruleset == nil {
+			return nil, fmt.Errorf("ruleset with id %s not found", doc.RulesetId)
+		}
+
+		if doc.LintStatus == view.StatusError {
+			// TODO
+			/*result := view.DocumentResult{
+				Ruleset:           entity.MakeRulesetView(*ruleset),
+				Issues:            nil,
+				ValidatedDocument: entity.MakeValidatedDocumentView(*lintedDocument),
+			}*/
+			//return &result, nil
+			continue // TODO: or error???
+		}
+
+		lintResult, err := v.lintResultRepository.GetLintResult(ctx, doc.DataHash, doc.RulesetId)
+		if err != nil {
+			return nil, err
+		}
+		if lintResult == nil {
+			return nil, nil
+		}
+
+		issues := make([]view.ValidationIssue, 0)
+		switch ruleset.Linter {
+		case view.SpectralLinter, view.SpectralAsyncLinter:
+			var spectralOutput []view.SpectralOutputItem
+			err = json.Unmarshal(lintResult.Data, &spectralOutput)
+			if err != nil {
+				return nil, err
+			}
+			for _, item := range spectralOutput {
+				var path []string
+				if item.Path != nil {
+					path = item.Path
+				} else {
+					path = make([]string, 0)
+				}
+				issues = append(issues, view.ValidationIssue{
+					Path:     path,
+					Code:     item.Code,
+					Severity: view.ConvertSpectralSeverityToString(item.Severity),
+					Message:  item.Message,
+				})
+			}
+		case view.AiOasLinter:
+			err = json.Unmarshal(lintResult.Data, &issues)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		result.Results = append(result.Results, view.LinterResult{
+			Linter:  ruleset.Linter,
+			Ruleset: entity.MakeRulesetView(*ruleset),
+			Issues:  issues,
+		})
 	}
 
 	return &result, nil

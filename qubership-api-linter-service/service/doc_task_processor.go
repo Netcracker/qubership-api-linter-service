@@ -4,6 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/repository"
@@ -11,10 +17,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	log "github.com/sirupsen/logrus"
-	"os"
-	"path/filepath"
-	"sync/atomic"
-	"time"
+	"gopkg.in/yaml.v3"
 )
 
 type DocTaskProcessor interface {
@@ -22,13 +25,14 @@ type DocTaskProcessor interface {
 }
 
 func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRepository repository.RulesetRepository,
-	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, executorId string) DocTaskProcessor {
+	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, aiOasExecutor AiOasExecutor, executorId string) DocTaskProcessor {
 	return &docTaskProcessorImpl{
 		docTaskRepo:         docTaskRepo,
 		ruleSetRepository:   ruleSetRepository,
 		docResultRepository: docResultRepository,
 		cl:                  cl,
 		spectralExecutor:    spectralExecutor,
+		aiOasExecutor:       aiOasExecutor,
 		executorId:          executorId,
 	}
 }
@@ -39,6 +43,7 @@ type docTaskProcessorImpl struct {
 	docResultRepository repository.DocResultRepository
 	cl                  client.ApihubClient
 	spectralExecutor    SpectralExecutor
+	aiOasExecutor       AiOasExecutor
 
 	executorId string
 }
@@ -201,12 +206,18 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	var report []interface{}
 	var summary view.SpectralResultSummary
 	var sumAsMap map[string]interface{}
+	var LinterVersion string
+	var calcTimeMs int64
+	logDetails := ""
 
-	if task.Linter == view.SpectralLinter {
+	if task.Linter == view.SpectralLinter || task.Linter == view.SpectralAsyncLinter {
+		// TODO: move prepare file here?
+
 		// it might take a long time due to linter lock or just long execution
+		var resultPath string
 
 		log.Infof("Processing doc %s (task id = %s) for package %s, version %s@%d by spectral", task.FileId, task.Id, task.PackageId, task.Version, task.Revision)
-		resultPath, calcTime, err := d.spectralExecutor.LintLocalDoc(filePath, rulesetPath)
+		resultPath, calcTimeMs, err = d.spectralExecutor.LintLocalDoc(filePath, rulesetPath)
 		if err != nil {
 			status = view.StatusError
 			details = fmt.Sprintf("error linting doc with spectral: %s", err)
@@ -245,14 +256,120 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			}
 		}
 
-		logDetails := ""
 		if details != "" {
 			logDetails = fmt.Sprintf("details = %s, ", details)
 		}
-		log.Infof("Lint finished for doc %s (task id = %s), status = %s, %sProcessing time = %+vms", task.FileId, task.Id, status, logDetails, calcTime)
 
-		LinterVersion := d.spectralExecutor.GetLinterVersion()
+		LinterVersion = d.spectralExecutor.GetLinterVersion()
 		log.Tracef("Spectral linter version is %s", LinterVersion)
+	}
+
+	if task.Linter == view.AiOasLinter {
+
+		// TODO
+		// lint every operation async
+		// wait for it
+		// deduplicate results (string comparison + ai)
+
+		doc, err := d.cl.GetDocumentDetails(ctx, task.PackageId, task.Version, task.FileSlug)
+		if err != nil {
+			status = view.StatusError
+			details = fmt.Sprintf("error getting document details: %s", err)
+		}
+
+		var rulesetData view.AiRuleset
+
+		if status == view.StatusSuccess {
+			err = yaml.Unmarshal(rs.Data, &rulesetData)
+			if err != nil {
+				status = view.StatusError
+				details = fmt.Sprintf("failed to unmarshal AI ruleset: %s", err)
+			}
+		}
+
+		var issues []view.ValidationIssue
+		issueKeys := map[string]struct{}{}
+
+		if status == view.StatusSuccess {
+			log.Infof("Processing doc %s (task id = %s) operations count = %d for package %s, version %s@%d by AI linter", task.FileId, task.Id, len(doc.Operations), task.PackageId, task.Version, task.Revision)
+			for _, op := range doc.Operations {
+				var opIssues []view.ValidationIssue
+
+				operation, err := d.cl.GetOperationWithData(ctx, task.PackageId, task.Version, view.RestApiType, op.OperationId)
+				if err != nil {
+					status = view.StatusError
+					details = fmt.Sprintf("error getting document details: %s", err)
+					break
+				}
+
+				var opCalcTime int64
+				opIssues, opCalcTime, err = d.aiOasExecutor.LintOperationsForDoc(ctx, string(operation.Data), rulesetData)
+				if err != nil {
+					status = view.StatusError
+					details = fmt.Sprintf("error linting doc with AI: %s", err)
+					break
+				}
+				for _, opIssue := range opIssues {
+					key := strings.Join(opIssue.Path, ".") + "|" + opIssue.Message // TODO any other data?
+					_, exists := issueKeys[key]
+					if exists {
+						log.Infof("Excluded as duplicate issue with path %+v and message = '%s' ", opIssue.Path, opIssue.Message)
+						continue
+					}
+					issueKeys[key] = struct{}{}
+					issues = append(issues, opIssue)
+				}
+
+				calcTimeMs += opCalcTime
+			}
+		}
+
+		if status == view.StatusSuccess {
+			for _, issue := range issues {
+				switch issue.Severity {
+				case "error":
+					summary.ErrorCount += 1
+				case "warning":
+					summary.WarningCount += 1
+				case "info":
+					summary.InfoCount += 1
+				case "hint":
+					summary.HintCount += 1
+				}
+			}
+
+			sumJson, err := json.Marshal(summary)
+			if err != nil {
+				status = view.StatusError
+				details = fmt.Sprintf("error marshaling summary: %s", err)
+			} else {
+				err = json.Unmarshal(sumJson, &sumAsMap)
+				if err != nil {
+					status = view.StatusError
+					details = fmt.Sprintf("error unmarshaling summary: %s", err)
+				}
+			}
+		}
+
+		if details != "" {
+			logDetails = fmt.Sprintf("details = %s, ", details)
+		}
+
+		LinterVersion = d.aiOasExecutor.GetLinterVersion()
+
+		issuesB, err := json.Marshal(issues)
+		if err != nil {
+			status = view.StatusError
+			details = fmt.Sprintf("error marshaling issues: %s", err)
+		}
+
+		result = issuesB
+	}
+
+	if LinterVersion != "" { // if lint was performed
+		log.Infof("%s lint finished for doc %s (task id = %s), status = %s, %sProcessing time = %+vms", task.Linter, task.FileId, task.Id, status, logDetails, calcTimeMs)
+
+		log.Tracef("%s linter version is %s", task.Linter, LinterVersion)
 
 		docEnt := entity.LintedDocument{
 			PackageId:         task.PackageId,
@@ -288,7 +405,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			}
 		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTime, verEnt, docEnt, lintFileResult, d.executorId)
+		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTimeMs, verEnt, docEnt, lintFileResult, d.executorId)
 		if err != nil {
 			d.handleError(ctx, task, fmt.Errorf("failed to save lint result with error: %s", err), time.Since(start).Milliseconds())
 			return
