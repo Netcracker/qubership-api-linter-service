@@ -27,11 +27,13 @@ type DocTaskProcessor interface {
 }
 
 func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRepository repository.RulesetRepository,
-	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, aiOasExecutor AiOasExecutor, executorId string, spectralLinterWorkers, aiLinterWorkers int) DocTaskProcessor {
+	docResultRepository repository.DocResultRepository, lintResultRepository repository.LintResultRepository,
+	cl client.ApihubClient, spectralExecutor SpectralExecutor, aiOasExecutor AiOasExecutor, executorId string, spectralLinterWorkers, aiLinterWorkers int) DocTaskProcessor {
 	return &docTaskProcessorImpl{
 		docTaskRepo:           docTaskRepo,
 		ruleSetRepository:     ruleSetRepository,
 		docResultRepository:   docResultRepository,
+		lintResultRepository:  lintResultRepository,
 		cl:                    cl,
 		spectralExecutor:      spectralExecutor,
 		aiOasExecutor:         aiOasExecutor,
@@ -42,12 +44,13 @@ func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRe
 }
 
 type docTaskProcessorImpl struct {
-	docTaskRepo         repository.DocLintTaskRepository
-	ruleSetRepository   repository.RulesetRepository
-	docResultRepository repository.DocResultRepository
-	cl                  client.ApihubClient
-	spectralExecutor    SpectralExecutor
-	aiOasExecutor       AiOasExecutor
+	docTaskRepo          repository.DocLintTaskRepository
+	ruleSetRepository    repository.RulesetRepository
+	docResultRepository  repository.DocResultRepository
+	lintResultRepository repository.LintResultRepository
+	cl                   client.ApihubClient
+	spectralExecutor     SpectralExecutor
+	aiOasExecutor        AiOasExecutor
 
 	executorId            string
 	spectralLinterWorkers int
@@ -145,8 +148,6 @@ func (d docTaskProcessorImpl) handleError(ctx context.Context, task entity.Docum
 }
 
 func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.DocumentLintTask) {
-	// TODO : hash could be in DocumentLintTask, it will allow to avoid downloading the doc and further processing
-	// TODO: shortcut by hash here? or validate anyway?
 	start := time.Now()
 
 	runningC := make(chan struct{})
@@ -189,6 +190,20 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		return
 	}
 
+	docHash := utils.CreateSHA256Hash(data)
+
+	// Validation shortcut: reuse cached result if document (by hash) + ruleset was already linted with same linter version
+	currentLinterVersion := d.getLinterVersion(task.Linter)
+	cached, err := d.lintResultRepository.GetLintResult(ctx, docHash, task.RulesetId)
+	if err != nil {
+		log.Warnf("Failed to check lint cache for task %s: %s", task.Id, err)
+	}
+	if cached != nil && cached.LinterVersion == currentLinterVersion {
+		log.Infof("Using cached lint result for doc %s (task id = %s), hash = %s", task.FileId, task.Id, docHash)
+		d.saveLintResultFromCache(ctx, task, docHash, cached, time.Since(start).Milliseconds())
+		return
+	}
+
 	tempDir := filepath.Join(os.TempDir(), task.Id)
 	if err := os.MkdirAll(tempDir, 0700); err != nil {
 		d.handleError(ctx, task, fmt.Errorf("error creating temp directory: %s", err), time.Since(start).Milliseconds())
@@ -202,8 +217,6 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		d.handleError(ctx, task, fmt.Errorf("error writing doc file: %s", err), time.Since(start).Milliseconds())
 		return
 	}
-
-	docHash := utils.CreateSHA256Hash(data)
 
 	rs, err := d.ruleSetRepository.GetRulesetWithData(ctx, task.RulesetId)
 	if err != nil {
@@ -431,6 +444,54 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	} else {
 		d.handleError(ctx, task, fmt.Errorf("selected linter %s is not supported", task.Linter), time.Since(start).Milliseconds())
 		return
+	}
+}
+
+func (d docTaskProcessorImpl) getLinterVersion(linter view.Linter) string {
+	switch linter {
+	case view.SpectralLinter, view.SpectralAsyncLinter:
+		return d.spectralExecutor.GetLinterVersion()
+	case view.AiOasLinter:
+		return d.aiOasExecutor.GetLinterVersion()
+	default:
+		return ""
+	}
+}
+
+func (d docTaskProcessorImpl) saveLintResultFromCache(ctx context.Context, task entity.DocumentLintTask, docHash string, cached *entity.LintFileResult, lintTimeMs int64) {
+	docEnt := entity.LintedDocument{
+		PackageId:         task.PackageId,
+		Version:           task.Version,
+		Revision:          task.Revision,
+		Slug:              task.FileSlug,
+		FileId:            task.FileId,
+		SpecificationType: task.APIType,
+		RulesetId:         task.RulesetId,
+		DataHash:          docHash,
+		LintStatus:        view.StatusSuccess,
+		LintDetails:       "",
+	}
+
+	verEnt := entity.LintedVersion{
+		PackageId:   task.PackageId,
+		Version:     task.Version,
+		Revision:    task.Revision,
+		LintStatus:  view.VersionStatusInProgress,
+		LintDetails: "",
+		LintedAt:    time.Now(),
+	}
+
+	lintFileResult := &entity.LintFileResult{
+		DataHash:      docHash,
+		RulesetId:     task.RulesetId,
+		LinterVersion: cached.LinterVersion,
+		Data:          cached.Data,
+		Summary:       cached.Summary,
+	}
+
+	err := d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusSuccess, "", lintTimeMs, verEnt, docEnt, lintFileResult, d.executorId)
+	if err != nil {
+		log.Errorf("Failed to save cached lint result for task %s: %s", task.Id, err)
 	}
 }
 
