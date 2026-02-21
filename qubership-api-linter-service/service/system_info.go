@@ -54,12 +54,14 @@ const (
 
 	PRODUCTION_MODE = "PRODUCTION_MODE"
 
-	OPENAI_API_KEY           = "OPENAI_API_KEY"
-	OPENAI_API_PROXY         = "OPENAI_API_PROXY"
-	OPENAI_MODEL             = "OPENAI_MODEL"
-	OPENAI_RATE_LIMIT_RPS    = "OPENAI_RATE_LIMIT_RPS"
-	OPENAI_RATE_LIMIT_BURST  = "OPENAI_RATE_LIMIT_BURST"
-	ENABLE_AI_OAS_LINTER     = "ENABLE_AI_OAS_LINTER"
+	OPENAI_API_KEY          = "OPENAI_API_KEY"
+	OPENAI_API_PROXY        = "OPENAI_API_PROXY"
+	OPENAI_MODEL            = "OPENAI_MODEL"
+	OPENAI_RATE_LIMIT_RPS   = "OPENAI_RATE_LIMIT_RPS"
+	OPENAI_RATE_LIMIT_BURST = "OPENAI_RATE_LIMIT_BURST"
+	ENABLE_AI_OAS_LINTER    = "ENABLE_AI_OAS_LINTER"
+	AI_LINTER_WORKERS       = "AI_LINTER_WORKERS"
+	SPECTRAL_LINTER_WORKERS = "SPECTRAL_LINTER_WORKERS"
 )
 
 type SystemInfoService interface {
@@ -94,6 +96,8 @@ type SystemInfoService interface {
 	GetOpenAIRateLimitRPS() float64
 	GetOpenAIRateLimitBurst() int
 	IsAiOasLinterEnabled() bool
+	GetAiLinterWorkers() int
+	GetSpectralLinterWorkers() int
 
 	SetProductionMode(apihubClient client.ApihubClient)
 	IsProductionMode() bool
@@ -145,6 +149,8 @@ func (s systemInfoServiceImpl) Init() error {
 	s.setOpenAIRateLimitRPS()
 	s.setOpenAIRateLimitBurst()
 	s.setEnableAIOasLinter()
+	s.setAiLinterWorkers()
+	s.setSpectralLinterWorkers()
 
 	return nil
 }
@@ -421,6 +427,42 @@ func (s systemInfoServiceImpl) setEnableAIOasLinter() {
 
 func (s systemInfoServiceImpl) IsAiOasLinterEnabled() bool {
 	return s.systemInfoMap[ENABLE_AI_OAS_LINTER].(bool)
+}
+
+func (s systemInfoServiceImpl) setAiLinterWorkers() {
+	workersStr := os.Getenv(AI_LINTER_WORKERS)
+	var workers int
+	if workersStr != "" {
+		if parsed, err := strconv.Atoi(workersStr); err == nil && parsed > 0 {
+			workers = parsed
+		}
+	}
+	if workers <= 0 {
+		workers = 3
+	}
+	s.systemInfoMap[AI_LINTER_WORKERS] = workers
+}
+
+func (s systemInfoServiceImpl) GetAiLinterWorkers() int {
+	return s.systemInfoMap[AI_LINTER_WORKERS].(int)
+}
+
+func (s systemInfoServiceImpl) setSpectralLinterWorkers() {
+	workersStr := os.Getenv(SPECTRAL_LINTER_WORKERS)
+	var workers int
+	if workersStr != "" {
+		if parsed, err := strconv.Atoi(workersStr); err == nil && parsed > 0 {
+			workers = parsed
+		}
+	}
+	if workers <= 0 {
+		workers = 1
+	}
+	s.systemInfoMap[SPECTRAL_LINTER_WORKERS] = workers
+}
+
+func (s systemInfoServiceImpl) GetSpectralLinterWorkers() int {
+	return s.systemInfoMap[SPECTRAL_LINTER_WORKERS].(int)
 }
 
 func (s systemInfoServiceImpl) SetProductionMode(apihubClient client.ApihubClient) {

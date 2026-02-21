@@ -27,15 +27,17 @@ type DocTaskProcessor interface {
 }
 
 func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRepository repository.RulesetRepository,
-	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, aiOasExecutor AiOasExecutor, executorId string) DocTaskProcessor {
+	docResultRepository repository.DocResultRepository, cl client.ApihubClient, spectralExecutor SpectralExecutor, aiOasExecutor AiOasExecutor, executorId string, spectralLinterWorkers, aiLinterWorkers int) DocTaskProcessor {
 	return &docTaskProcessorImpl{
-		docTaskRepo:         docTaskRepo,
-		ruleSetRepository:   ruleSetRepository,
-		docResultRepository: docResultRepository,
-		cl:                  cl,
-		spectralExecutor:    spectralExecutor,
-		aiOasExecutor:       aiOasExecutor,
-		executorId:          executorId,
+		docTaskRepo:           docTaskRepo,
+		ruleSetRepository:     ruleSetRepository,
+		docResultRepository:   docResultRepository,
+		cl:                    cl,
+		spectralExecutor:      spectralExecutor,
+		aiOasExecutor:         aiOasExecutor,
+		executorId:            executorId,
+		spectralLinterWorkers: spectralLinterWorkers,
+		aiLinterWorkers:       aiLinterWorkers,
 	}
 }
 
@@ -47,43 +49,57 @@ type docTaskProcessorImpl struct {
 	spectralExecutor    SpectralExecutor
 	aiOasExecutor       AiOasExecutor
 
-	executorId string
+	executorId            string
+	spectralLinterWorkers int
+	aiLinterWorkers       int
 }
-
-// TODO: maybe need some fast track
-// TODO: read from ticker chan or from events chan
 
 func (d docTaskProcessorImpl) Start() {
-	// TODO: multiple threads or not?
+	for i := 0; i < d.spectralLinterWorkers; i++ {
+		workerId := i
+		utils.SafeAsync(func() {
+			d.runWorkerLoop(view.SpectralLinter, view.SpectralAsyncLinter)
+			log.Tracef("docTaskProcessorImpl: Spectral worker %d exited", workerId)
+		})
+	}
 
-	utils.SafeAsync(func() {
-		ticker := time.NewTicker(time.Second * 5)
-
-		running := atomic.Bool{}
-
-		for range ticker.C {
-			if running.Load() {
-				log.Tracef("docTaskProcessorImpl: ticker skipped, running")
-				continue
-			}
-
-			utils.SafeAsync(func() {
-				running.Store(true)
-				for {
-					moreWork := d.processTask()
-					if moreWork == false {
-						break
-					}
-					log.Tracef("docTaskProcessorImpl: keep on running")
-				}
-				running.Store(false)
-			})
-		}
-	})
+	for i := 0; i < d.aiLinterWorkers; i++ {
+		workerId := i
+		utils.SafeAsync(func() {
+			d.runWorkerLoop(view.AiOasLinter)
+			log.Tracef("docTaskProcessorImpl: AI worker %d exited", workerId)
+		})
+	}
+	log.Infof("docTaskProcessorImpl: started %d Spectral and %d AI linter workers", d.spectralLinterWorkers, d.aiLinterWorkers)
 }
 
-func (d docTaskProcessorImpl) processTask() bool {
-	task, err := d.docTaskRepo.FindFreeDocTask(context.Background(), d.executorId)
+func (d docTaskProcessorImpl) runWorkerLoop(linters ...view.Linter) {
+	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
+
+	running := atomic.Bool{}
+	for range ticker.C {
+		if running.Load() {
+			log.Tracef("docTaskProcessorImpl: worker skipped, still running")
+			continue
+		}
+
+		utils.SafeAsync(func() {
+			running.Store(true)
+			for {
+				moreWork := d.processTask(linters...)
+				if !moreWork {
+					break
+				}
+				log.Tracef("docTaskProcessorImpl: keep on running")
+			}
+			running.Store(false)
+		})
+	}
+}
+
+func (d docTaskProcessorImpl) processTask(linters ...view.Linter) bool {
+	task, err := d.docTaskRepo.FindFreeDocTask(context.Background(), d.executorId, linters...)
 	if err != nil {
 		log.Errorf("Error finding free doc task: %s", err)
 		return false
@@ -218,7 +234,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		// it might take a long time due to linter lock or just long execution
 		var resultPath string
 
-		log.Infof("Processing doc %s (task id = %s) for package %s, version %s@%d by spectral", task.FileId, task.Id, task.PackageId, task.Version, task.Revision)
+		log.Infof("Processing by spectral doc %s (task id = %s) for package %s, version %s@%d", task.FileId, task.Id, task.PackageId, task.Version, task.Revision)
 		resultPath, calcTimeMs, err = d.spectralExecutor.LintLocalDoc(filePath, rulesetPath)
 		if err != nil {
 			status = view.StatusError
@@ -287,7 +303,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		issueKeys := map[string]struct{}{}
 
 		if status == view.StatusSuccess {
-			log.Infof("Processing doc %s (task id = %s) operations count = %d for package %s, version %s@%d by AI linter", task.FileId, task.Id, len(doc.Operations), task.PackageId, task.Version, task.Revision)
+			log.Infof("Processing by AI linter doc %s (task id = %s) operations count = %d for package %s, version %s@%d", task.FileId, task.Id, len(doc.Operations), task.PackageId, task.Version, task.Revision)
 
 			var mu sync.Mutex
 			g, gCtx := errgroup.WithContext(ctx)
