@@ -54,10 +54,12 @@ const (
 
 	PRODUCTION_MODE = "PRODUCTION_MODE"
 
-	OPENAI_API_KEY       = "OPENAI_API_KEY"
-	OPENAI_API_PROXY     = "OPENAI_API_PROXY"
-	OPENAI_MODEL         = "OPENAI_MODEL"
-	ENABLE_AI_OAS_LINTER = "ENABLE_AI_OAS_LINTER"
+	OPENAI_API_KEY           = "OPENAI_API_KEY"
+	OPENAI_API_PROXY         = "OPENAI_API_PROXY"
+	OPENAI_MODEL             = "OPENAI_MODEL"
+	OPENAI_RATE_LIMIT_RPS    = "OPENAI_RATE_LIMIT_RPS"
+	OPENAI_RATE_LIMIT_BURST  = "OPENAI_RATE_LIMIT_BURST"
+	ENABLE_AI_OAS_LINTER     = "ENABLE_AI_OAS_LINTER"
 )
 
 type SystemInfoService interface {
@@ -89,6 +91,8 @@ type SystemInfoService interface {
 	GetOpenAIAPIKey() string
 	GetOpenAIAPIProxy() string
 	GetOpenAIModel() string
+	GetOpenAIRateLimitRPS() float64
+	GetOpenAIRateLimitBurst() int
 	IsAiOasLinterEnabled() bool
 
 	SetProductionMode(apihubClient client.ApihubClient)
@@ -138,6 +142,8 @@ func (s systemInfoServiceImpl) Init() error {
 	s.setOpenAIAPIKey()
 	s.setOpenAIAPIProxy()
 	s.setOpenAIModel()
+	s.setOpenAIRateLimitRPS()
+	s.setOpenAIRateLimitBurst()
 	s.setEnableAIOasLinter()
 
 	return nil
@@ -366,6 +372,42 @@ func (s systemInfoServiceImpl) setOpenAIModel() {
 
 func (s systemInfoServiceImpl) GetOpenAIModel() string {
 	return s.systemInfoMap[OPENAI_MODEL].(string)
+}
+
+func (s systemInfoServiceImpl) setOpenAIRateLimitRPS() {
+	rpsStr := os.Getenv(OPENAI_RATE_LIMIT_RPS)
+	var rps float64
+	if rpsStr != "" {
+		if parsed, err := strconv.ParseFloat(rpsStr, 64); err == nil && parsed > 0 {
+			rps = parsed
+		}
+	}
+	if rps <= 0 {
+		rps = 10.0 // default: 10 requests per second
+	}
+	s.systemInfoMap[OPENAI_RATE_LIMIT_RPS] = rps
+}
+
+func (s systemInfoServiceImpl) GetOpenAIRateLimitRPS() float64 {
+	return s.systemInfoMap[OPENAI_RATE_LIMIT_RPS].(float64)
+}
+
+func (s systemInfoServiceImpl) setOpenAIRateLimitBurst() {
+	burstStr := os.Getenv(OPENAI_RATE_LIMIT_BURST)
+	var burst int
+	if burstStr != "" {
+		if parsed, err := strconv.Atoi(burstStr); err == nil && parsed > 0 {
+			burst = parsed
+		}
+	}
+	if burst <= 0 {
+		burst = 30 // default: allow burst of 30 requests
+	}
+	s.systemInfoMap[OPENAI_RATE_LIMIT_BURST] = burst
+}
+
+func (s systemInfoServiceImpl) GetOpenAIRateLimitBurst() int {
+	return s.systemInfoMap[OPENAI_RATE_LIMIT_BURST].(int)
 }
 
 func (s systemInfoServiceImpl) setEnableAIOasLinter() {

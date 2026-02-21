@@ -130,7 +130,9 @@ func main() {
 	oaiCl, err := client.NewOpenaiClient(
 		systemInfoService.GetOpenAIAPIKey(),
 		systemInfoService.GetOpenAIModel(),
-		systemInfoService.GetOpenAIAPIProxy())
+		systemInfoService.GetOpenAIAPIProxy(),
+		systemInfoService.GetOpenAIRateLimitRPS(),
+		systemInfoService.GetOpenAIRateLimitBurst())
 	if err != nil {
 		log.Panicf("Failed create openaiClient: %s", err.Error())
 	}

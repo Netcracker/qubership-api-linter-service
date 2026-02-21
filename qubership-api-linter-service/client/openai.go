@@ -13,6 +13,7 @@ import (
 	"github.com/invopop/jsonschema"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"golang.org/x/time/rate"
 )
 
 type LLMClient interface {
@@ -23,7 +24,7 @@ func dialTimeout(network, addr string) (net.Conn, error) {
 	return net.DialTimeout(network, addr, 1800*time.Second)
 }
 
-func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, error) {
+func NewOpenaiClient(apiKey string, model string, proxy string, rateLimitRPS float64, rateLimitBurst int) (LLMClient, error) {
 	var opts []option.RequestOption
 	if apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
@@ -50,21 +51,24 @@ func NewOpenaiClient(apiKey string, model string, proxy string) (LLMClient, erro
 		TLSHandshakeTimeout:   time.Second * 1800,
 		IdleConnTimeout:       time.Second * 1800,
 		ResponseHeaderTimeout: time.Second * 1800,
-		ExpectContinueTimeout: time.Second * 1800,
 	}
 	cl := http.Client{Transport: &tr, Timeout: time.Second * 1800}
 
 	opts = append(opts, option.WithHTTPClient(&cl))
 
+	limiter := rate.NewLimiter(rate.Limit(rateLimitRPS), rateLimitBurst)
+
 	return &OAIClientImpl{
-		client: openai.NewClient(opts...),
-		model:  openAIModel,
+		client:  openai.NewClient(opts...),
+		model:   openAIModel,
+		limiter: limiter,
 	}, nil
 }
 
 type OAIClientImpl struct {
-	client openai.Client
-	model  openai.ChatModel
+	client  openai.Client
+	model   openai.ChatModel
+	limiter *rate.Limiter
 
 	generateProblemsPrompt string
 	fixProblemsPrompt      string
@@ -73,8 +77,9 @@ type OAIClientImpl struct {
 var AiValidationIssuesOutputResponseSchema = generateSchema[view.AiValidationIssuesOutput]()
 
 func (o OAIClientImpl) LintOasDocument(ctx context.Context, docStr string, prompt string) ([]view.AiValidationIssue, error) {
-
-	// TODO: client side rate limiter to control token usage and avoid errors
+	if err := o.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
 
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(prompt),

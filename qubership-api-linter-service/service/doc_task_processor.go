@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 )
 
@@ -265,12 +267,6 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	}
 
 	if task.Linter == view.AiOasLinter {
-
-		// TODO
-		// lint every operation async
-		// wait for it
-		// deduplicate results (string comparison + ai)
-
 		doc, err := d.cl.GetDocumentDetails(ctx, task.PackageId, task.Version, task.FileSlug)
 		if err != nil {
 			status = view.StatusError
@@ -292,35 +288,41 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 
 		if status == view.StatusSuccess {
 			log.Infof("Processing doc %s (task id = %s) operations count = %d for package %s, version %s@%d by AI linter", task.FileId, task.Id, len(doc.Operations), task.PackageId, task.Version, task.Revision)
+
+			var mu sync.Mutex
+			g, gCtx := errgroup.WithContext(ctx)
 			for _, op := range doc.Operations {
-				var opIssues []view.ValidationIssue
-
-				operation, err := d.cl.GetOperationWithData(ctx, task.PackageId, task.Version, view.RestApiType, op.OperationId)
-				if err != nil {
-					status = view.StatusError
-					details = fmt.Sprintf("error getting document details: %s", err)
-					break
-				}
-
-				var opCalcTime int64
-				opIssues, opCalcTime, err = d.aiOasExecutor.LintOperationsForDoc(ctx, string(operation.Data), rulesetData)
-				if err != nil {
-					status = view.StatusError
-					details = fmt.Sprintf("error linting doc with AI: %s", err)
-					break
-				}
-				for _, opIssue := range opIssues {
-					key := strings.Join(opIssue.Path, ".") + "|" + opIssue.Message // TODO any other data?
-					_, exists := issueKeys[key]
-					if exists {
-						log.Infof("Excluded as duplicate issue with path %+v and message = '%s' ", opIssue.Path, opIssue.Message)
-						continue
+				op := op
+				g.Go(func() error {
+					operation, err := d.cl.GetOperationWithData(gCtx, task.PackageId, task.Version, view.RestApiType, op.OperationId)
+					if err != nil {
+						return fmt.Errorf("error getting document details: %w", err)
 					}
-					issueKeys[key] = struct{}{}
-					issues = append(issues, opIssue)
-				}
 
-				calcTimeMs += opCalcTime
+					opIssues, opCalcTime, err := d.aiOasExecutor.LintOperationsForDoc(gCtx, string(operation.Data), rulesetData)
+					if err != nil {
+						return fmt.Errorf("error linting doc with AI: %w", err)
+					}
+
+					mu.Lock()
+					for _, opIssue := range opIssues {
+						key := strings.Join(opIssue.Path, ".") + "|" + opIssue.Message // TODO any other data?
+						if _, exists := issueKeys[key]; exists {
+							log.Infof("Excluded as duplicate issue with path %+v and message = '%s' ", opIssue.Path, opIssue.Message)
+							continue
+						}
+						issueKeys[key] = struct{}{}
+						issues = append(issues, opIssue)
+					}
+					calcTimeMs += opCalcTime
+					mu.Unlock()
+					return nil
+				})
+			}
+
+			if err := g.Wait(); err != nil {
+				status = view.StatusError
+				details = err.Error()
 			}
 		}
 
