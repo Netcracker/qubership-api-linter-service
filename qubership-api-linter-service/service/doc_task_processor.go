@@ -28,7 +28,7 @@ type DocTaskProcessor interface {
 
 func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRepository repository.RulesetRepository,
 	docResultRepository repository.DocResultRepository, lintResultRepository repository.LintResultRepository,
-	cl client.ApihubClient, spectralExecutor SpectralExecutor, aiOasExecutor AiOasExecutor, executorId string, spectralLinterWorkers, aiLinterWorkers int) DocTaskProcessor {
+	cl client.ApihubClient, spectralExecutor SpectralExecutor, aiOasExecutor AiOasExecutor, executorId string, spectralLinterWorkers, aiLinterWorkers int, docTaskNotify <-chan struct{}) DocTaskProcessor {
 	return &docTaskProcessorImpl{
 		docTaskRepo:           docTaskRepo,
 		ruleSetRepository:     ruleSetRepository,
@@ -40,6 +40,7 @@ func NewDocTaskProcessor(docTaskRepo repository.DocLintTaskRepository, ruleSetRe
 		executorId:            executorId,
 		spectralLinterWorkers: spectralLinterWorkers,
 		aiLinterWorkers:       aiLinterWorkers,
+		docTaskNotify:         docTaskNotify,
 	}
 }
 
@@ -55,6 +56,7 @@ type docTaskProcessorImpl struct {
 	executorId            string
 	spectralLinterWorkers int
 	aiLinterWorkers       int
+	docTaskNotify         <-chan struct{}
 }
 
 func (d docTaskProcessorImpl) Start() {
@@ -81,10 +83,19 @@ func (d docTaskProcessorImpl) runWorkerLoop(linters ...view.Linter) {
 	defer ticker.Stop()
 
 	running := atomic.Bool{}
-	for range ticker.C {
+	for {
 		if running.Load() {
 			log.Tracef("docTaskProcessorImpl: worker skipped, still running")
+			<-ticker.C
 			continue
+		}
+
+		select {
+		case <-ticker.C:
+			// periodic poll
+		case <-d.docTaskNotify:
+			// interrupt sleep and start processing immediately when doc lint task is created
+			log.Tracef("docTaskProcessorImpl: woken by doc task notify")
 		}
 
 		utils.SafeAsync(func() {

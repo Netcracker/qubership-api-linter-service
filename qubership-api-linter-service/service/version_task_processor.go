@@ -21,7 +21,7 @@ type VersionTaskProcessor interface {
 	StartVersionLintTask(taskId string) error
 }
 
-func NewVersionTaskProcessor(verRepo repository.VersionLintTaskRepository, docRepo repository.DocLintTaskRepository, verResRepo repository.VersionResultRepository, cl client.ApihubClient, linterSelectorService LinterSelectorService, executorId string) VersionTaskProcessor {
+func NewVersionTaskProcessor(verRepo repository.VersionLintTaskRepository, docRepo repository.DocLintTaskRepository, verResRepo repository.VersionResultRepository, cl client.ApihubClient, linterSelectorService LinterSelectorService, executorId string, docTaskNotify chan<- struct{}, versionTaskNotify <-chan struct{}) VersionTaskProcessor {
 	svc := &versionTaskProcessorImpl{
 		verRepo:               verRepo,
 		docRepo:               docRepo,
@@ -29,6 +29,8 @@ func NewVersionTaskProcessor(verRepo repository.VersionLintTaskRepository, docRe
 		cl:                    cl,
 		linterSelectorService: linterSelectorService,
 		executorId:            executorId,
+		docTaskNotify:         docTaskNotify,
+		versionTaskNotify:     versionTaskNotify,
 	}
 
 	utils.SafeAsync(func() {
@@ -49,6 +51,8 @@ type versionTaskProcessorImpl struct {
 	cl                    client.ApihubClient
 	linterSelectorService LinterSelectorService
 	executorId            string
+	docTaskNotify         chan<- struct{}
+	versionTaskNotify     <-chan struct{}
 }
 
 func (v versionTaskProcessorImpl) StartVersionLintTask(taskId string) error {
@@ -170,17 +174,34 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 		return
 	}
 
+	// Signal doc task processor to wake up and start processing immediately
+	select {
+	case v.docTaskNotify <- struct{}{}:
+	default:
+		// channel full or no receiver - worker will pick up on next tick
+	}
+
 	log.Infof("Version lint task for [ %s | %s ] (id = %s) is processed, %d doc lint task(s) created. Processing time = %dms", task.PackageId, task.Version, taskId, len(docTasks), time.Since(start).Milliseconds())
 }
 
 func (v versionTaskProcessorImpl) acquireFreeTasks() {
 	t := time.NewTicker(time.Second * 5)
+	defer t.Stop()
 
 	running := atomic.Bool{}
-	for range t.C {
+	for {
 		if running.Load() {
 			log.Tracef("versionTaskProcessorImpl: ticker skipped, running")
+			<-t.C
 			continue
+		}
+
+		select {
+		case <-t.C:
+			// periodic poll
+		case <-v.versionTaskNotify:
+			// interrupt sleep and start processing immediately when version lint task is created
+			log.Tracef("versionTaskProcessorImpl: woken by version task notify")
 		}
 
 		utils.SafeAsync(func() {
