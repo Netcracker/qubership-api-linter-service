@@ -2,11 +2,11 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/Netcracker/qubership-api-linter-service/db"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
+	"github.com/go-pg/pg/v10"
 )
 
 type VersionResultRepository interface {
@@ -31,7 +31,7 @@ func (v versionResultRepositoryImpl) GetLintedVersion(ctx context.Context, packa
 		Where("revision = ?", revision).
 		Select()
 	if err != nil {
-		if errors.As(err, &sql.ErrNoRows) {
+		if errors.As(err, &pg.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
@@ -49,7 +49,7 @@ func (v versionResultRepositoryImpl) GetVersionAndDocsSummary(ctx context.Contex
 		Where("revision = ?", revision).
 		Select()
 	if err != nil {
-		if errors.As(err, &sql.ErrNoRows) {
+		if errors.As(err, &pg.ErrNoRows) {
 			return nil, nil, nil
 		}
 		return nil, nil, err
@@ -63,7 +63,7 @@ func (v versionResultRepositoryImpl) GetVersionAndDocsSummary(ctx context.Contex
 		Order("slug ASC").
 		Select()
 	if err != nil {
-		if errors.As(err, &sql.ErrNoRows) {
+		if errors.As(err, &pg.ErrNoRows) {
 			return nil, nil, nil
 		}
 		return nil, nil, err
@@ -81,7 +81,7 @@ func (v versionResultRepositoryImpl) GetLintedDocuments(ctx context.Context, pac
 		Where("slug = ?", slug).
 		Select()
 	if err != nil {
-		if errors.As(err, &sql.ErrNoRows) {
+		if errors.As(err, &pg.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err

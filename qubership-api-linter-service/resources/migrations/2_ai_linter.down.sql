@@ -1,13 +1,17 @@
 alter table linted_document
     drop constraint linted_document_pk;
 
-alter table linted_document
-    add constraint linted_document_pk
-        primary key (package_id, version, revision, file_id);
-
 delete from linted_document where ruleset_id in (select id from ruleset where linter='ai_oas');
 delete from document_lint_task where ruleset_id in (select id from ruleset where linter='ai_oas');
 delete from lint_file_result where ruleset_id in (select id from ruleset where linter='ai_oas');
+
+delete from linted_document where ruleset_id in (select id from ruleset where api_type='asyncapi-3-0');
+delete from document_lint_task where ruleset_id in (select id from ruleset where api_type='asyncapi-3-0');
+delete from lint_file_result where ruleset_id in (select id from ruleset where api_type='asyncapi-3-0');
+
+alter table linted_document
+    add constraint linted_document_pk
+        primary key (package_id, version, revision, file_id);
 
 delete from ruleset where id='c6a9b817-10c7-4f59-8a2b-8f3eebe95929';
 delete from ruleset where id='d417c9c7-77d4-4f8a-b4a1-6231a1d8a885';
