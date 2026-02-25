@@ -26,7 +26,7 @@ WORKDIR /workspace/qubership-api-linter-service
 
 RUN GOSUMDB=off CGO_ENABLED=0 go mod tidy && go mod download && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build .
 
-FROM docker.io/alpine:3.22.1
+FROM docker.io/alpine:3.23
 
 ARG GIT_BRANCH=unknown
 ARG GIT_HASH=unknown
