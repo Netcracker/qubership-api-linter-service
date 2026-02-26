@@ -17,16 +17,17 @@ package controller
 import (
 	"encoding/base64"
 	"fmt"
-	"github.com/Netcracker/qubership-api-linter-service/exception"
-	"github.com/Netcracker/qubership-api-linter-service/secctx"
-	"github.com/Netcracker/qubership-api-linter-service/service"
-	"github.com/Netcracker/qubership-api-linter-service/view"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Netcracker/qubership-api-linter-service/exception"
+	"github.com/Netcracker/qubership-api-linter-service/secctx"
+	"github.com/Netcracker/qubership-api-linter-service/service"
+	"github.com/Netcracker/qubership-api-linter-service/view"
+	log "github.com/sirupsen/logrus"
 )
 
 type RulesetController interface {
@@ -416,7 +417,7 @@ func validateApiType(at view.ApiType) error {
 
 func validateLinter(linter view.Linter) error {
 	switch linter {
-	case view.SpectralLinter:
+	case view.SpectralLinter, view.SpectralAsyncLinter, view.AiOasLinter: // TODO; use linters configuration
 		return nil
 	default:
 		return &exception.CustomError{
