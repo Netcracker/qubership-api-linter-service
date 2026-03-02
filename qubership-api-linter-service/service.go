@@ -157,12 +157,13 @@ func main() {
 	versionResultRepository := repository.NewVersionResultRepository(cp)
 	lintResultRepository := repository.NewLintResultRepository(cp)
 
-	linterSelectorService := service.NewLinterSelectorService(ruleSetRepository, systemInfoService)
+	linterConfigService := service.NewLinterConfigService(systemInfoService)
+	linterSelectorService := service.NewLinterSelectorService(ruleSetRepository, linterConfigService)
 
 	docTaskNotify := make(chan struct{}, 1)
 	versionTaskNotify := make(chan struct{}, 1)
 	versionTaskProcessor := service.NewVersionTaskProcessor(versionLintTaskRepository, docLintTaskRepository, versionResultRepository, apihubClient, linterSelectorService, executorId, docTaskNotify, versionTaskNotify)
-	spectralExecutor, err := service.NewSpectralExecutor(systemInfoService.GetSpectralBinPath())
+	spectralExecutor, err := service.NewSpectralExecutor(systemInfoService.GetSpectralBinPath()) // TODO: use linters config
 	if err != nil {
 		log.Fatalf("Failed to create Spectral executor: %s", err.Error())
 	}
@@ -178,16 +179,17 @@ func main() {
 	authorizationService := service.NewAuthorizationService(apihubClient)
 
 	validationController := controller.NewValidationController(validationService, authorizationService)
-
 	validationResultController := controller.NewValidationResultController(validationService, authorizationService)
-
 	rulesetController := controller.NewRulesetController(rulesetService, authorizationService)
 	cleanupController := controller.NewCleanupController(cleanupService, authorizationService, systemInfoService)
 	healthController := controller.NewHealthController(readyChan)
 	logsController := controller.NewLogsController()
+	linterController := controller.NewLinterController(linterConfigService)
 
 	// Validate version
+	// TODO: recalculate/force flag to avoid using lint cache for this validation
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", security.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
+	// TODO: recalculate/force flag to avoid using lint cache for this validation
 	r.HandleFunc("/api/v1/bulkValidation", security.Secure(validationController.StartBulkValidation)).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/bulkValidation/{jobId}", security.Secure(validationController.GetBulkValidationStatus)).Methods(http.MethodGet)
 
@@ -197,8 +199,8 @@ func main() {
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", security.Secure(validationResultController.GetValidationResultForDocument_deprecated)).Methods(http.MethodGet)
 	r.HandleFunc("/api/v2/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", security.Secure(validationResultController.GetValidationResultForDocument)).Methods(http.MethodGet)
 
-	// TODO: download issues
-	// TODO: add filters by linter and type to /details and download
+	// Linters
+	r.HandleFunc("/api/v1/linters", security.Secure(linterController.ListLinters)).Methods(http.MethodGet)
 
 	// Ruleset management
 	r.HandleFunc("/api/v1/rulesets", security.Secure(rulesetController.CreateRuleset)).Methods(http.MethodPost)

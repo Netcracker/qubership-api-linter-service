@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Netcracker/qubership-api-linter-service/client"
@@ -62,6 +63,9 @@ const (
 	ENABLE_AI_OAS_LINTER    = "ENABLE_AI_OAS_LINTER"
 	AI_LINTER_WORKERS       = "AI_LINTER_WORKERS"
 	SPECTRAL_LINTER_WORKERS = "SPECTRAL_LINTER_WORKERS"
+
+	AI_LINTER_EXCLUDED_PACKAGES = "AI_LINTER_EXCLUDED_PACKAGES"
+	AI_LINTER_INCLUDED_PACKAGES = "AI_LINTER_INCLUDED_PACKAGES"
 )
 
 type SystemInfoService interface {
@@ -97,6 +101,8 @@ type SystemInfoService interface {
 	GetOpenAIRateLimitBurst() int
 	IsAiOasLinterEnabled() bool
 	GetAiLinterWorkers() int
+	GetAiLinterExcludedPackages() []string
+	GetAiLinterIncludedPackages() []string
 	GetSpectralLinterWorkers() int
 
 	SetProductionMode(apihubClient client.ApihubClient)
@@ -150,6 +156,8 @@ func (s systemInfoServiceImpl) Init() error {
 	s.setOpenAIRateLimitBurst()
 	s.setEnableAIOasLinter()
 	s.setAiLinterWorkers()
+	s.setAiLinterExcludedPackages()
+	s.setAiLinterIncludedPackages()
 	s.setSpectralLinterWorkers()
 
 	return nil
@@ -445,6 +453,40 @@ func (s systemInfoServiceImpl) setAiLinterWorkers() {
 
 func (s systemInfoServiceImpl) GetAiLinterWorkers() int {
 	return s.systemInfoMap[AI_LINTER_WORKERS].(int)
+}
+
+func parseCommaSeparatedList(val string) []string {
+	if val == "" {
+		return nil
+	}
+	parts := strings.Split(val, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func (s systemInfoServiceImpl) setAiLinterExcludedPackages() {
+	s.systemInfoMap[AI_LINTER_EXCLUDED_PACKAGES] = parseCommaSeparatedList(os.Getenv(AI_LINTER_EXCLUDED_PACKAGES))
+}
+
+func (s systemInfoServiceImpl) GetAiLinterExcludedPackages() []string {
+	return s.systemInfoMap[AI_LINTER_EXCLUDED_PACKAGES].([]string)
+}
+
+func (s systemInfoServiceImpl) setAiLinterIncludedPackages() {
+	s.systemInfoMap[AI_LINTER_INCLUDED_PACKAGES] = parseCommaSeparatedList(os.Getenv(AI_LINTER_INCLUDED_PACKAGES))
+}
+
+func (s systemInfoServiceImpl) GetAiLinterIncludedPackages() []string {
+	return s.systemInfoMap[AI_LINTER_INCLUDED_PACKAGES].([]string)
 }
 
 func (s systemInfoServiceImpl) setSpectralLinterWorkers() {

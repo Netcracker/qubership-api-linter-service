@@ -10,6 +10,8 @@ security:
   - api-key: []
   - PersonalAccessToken: []
 tags:
+  - name: Linters
+    description: API for retrieving available linter configurations.
   - name: Ruleset Management
     description: API related to management of validation rulesets.
   - name: Validation Result
@@ -17,6 +19,36 @@ tags:
   - name: Validation Operations
     description: API operations for managing validation processes.
 paths:
+  /api/v1/linters:
+    get:
+      tags:
+        - Linters
+      summary: List available linters
+      description: >
+        Returns the list of available linter configurations with their supported API types and enabled status.
+        Configuration is derived from system settings (e.g., AI OAS linter visibility depends on ENABLE_AI_OAS_LINTER).
+      operationId: listLinters
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExternalLinterConfig"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/rulesets/{id}:
     get:
       tags:
@@ -424,6 +456,38 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
+    ExternalLinterConfig:
+      description: Configuration of an available linter.
+      type: object
+      required:
+        - linter
+        - apiTypes
+        - displayName
+        - enabled
+      properties:
+        linter:
+          description: Linter identifier.
+          type: string
+          enum:
+            - spectral
+            - ai_oas
+            - spectral_asyncapi
+        apiTypes:
+          description: API specification types supported by this linter.
+          type: array
+          items:
+            type: string
+            enum:
+              - openapi-2-0
+              - openapi-3-0
+              - openapi-3-1
+              - asyncapi-3-0
+        displayName:
+          description: Human-readable name of the linter.
+          type: string
+        enabled:
+          description: Whether the linter is enabled in the current configuration.
+          type: boolean
     ErrorResponse:
       description: An error description
       type: object

@@ -96,7 +96,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	for _, doc := range docs.Documents {
 		_, exists := typeToLinters[doc.Type]
 		if !exists {
-			lr := v.linterSelectorService.SelectLintersAndRuleset(ctx, doc.Type)
+			lr := v.linterSelectorService.SelectLintersAndRuleset(ctx, doc.Type, task.PackageId)
 			if linters, ok := typeToLinters[doc.Type]; ok {
 				linters = append(linters, lr...)
 				typeToLinters[doc.Type] = linters
@@ -316,12 +316,11 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 		}
 
 	}
-
 }
 
 func (v versionTaskProcessorImpl) handleProcessingFailed(ctx context.Context, verLintTask entity.VersionLintTask, taskErr error) {
 	if verLintTask.RestartCount >= 2 {
-		log.Error("Failed to process version task %s with status = %s: %s. No more retries.", verLintTask.Id, verLintTask.Status, taskErr)
+		log.Errorf("Failed to process version task %s with status = %s: %s. No more retries.", verLintTask.Id, verLintTask.Status, taskErr)
 		updErr := v.verRepo.VersionLintFailed(ctx, verLintTask.Id, fmt.Sprintf("failed to save version lint finished status: %s", taskErr))
 		if updErr != nil {
 			log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.TaskStatusError, updErr)

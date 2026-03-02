@@ -46,7 +46,7 @@ func (v validationServiceImpl) runDocumentsVacuum(documents []string) (*[]view.D
 			CalculationTime: calculationTime,
 		}
 		if errStr != "" {
-			log.Errorf(errStr)
+			log.Error(errStr)
 			documentValidation.Details = errStr
 		} else {
 			documentValidation.Summary = vacuumReport.Statistics
