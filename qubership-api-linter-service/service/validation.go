@@ -160,7 +160,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 		var summ *view.IssuesSummary
 
 		switch ruleset.Linter {
-		case view.SpectralLinter, view.SpectralAsyncLinter:
+		case view.SpectralLinter:
 			// calculate spectral summary
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
@@ -170,7 +170,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 				return nil, fmt.Errorf("failed to calculate spectral result summary")
 			}
 			break
-		case view.AiOasLinter:
+		case view.AiLinter:
 			// calculate summary
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
@@ -275,7 +275,7 @@ func (v validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context,
 		var summ *view.IssuesSummary
 
 		switch ruleset.Linter {
-		case view.SpectralLinter, view.SpectralAsyncLinter:
+		case view.SpectralLinter:
 			// calculate spectral summary
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
@@ -285,7 +285,7 @@ func (v validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context,
 				return nil, fmt.Errorf("failed to calculate spectral result summary")
 			}
 			break
-		case view.AiOasLinter:
+		case view.AiLinter:
 			continue
 		case view.UnknownLinter:
 			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
@@ -438,7 +438,7 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 
 		issues := make([]view.ValidationIssue, 0)
 		switch ruleset.Linter {
-		case view.SpectralLinter, view.SpectralAsyncLinter:
+		case view.SpectralLinter:
 			var spectralOutput []view.SpectralOutputItem
 			err = json.Unmarshal(lintResult.Data, &spectralOutput)
 			if err != nil {
@@ -458,7 +458,7 @@ func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageI
 					Message:  item.Message,
 				})
 			}
-		case view.AiOasLinter:
+		case view.AiLinter:
 			err = json.Unmarshal(lintResult.Data, &issues)
 			if err != nil {
 				return nil, err

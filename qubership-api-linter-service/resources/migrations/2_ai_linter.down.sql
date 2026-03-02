@@ -1,13 +1,15 @@
 alter table linted_document
     drop constraint linted_document_pk;
 
-delete from linted_document where ruleset_id in (select id from ruleset where linter='ai_oas');
-delete from document_lint_task where ruleset_id in (select id from ruleset where linter='ai_oas');
-delete from lint_file_result where ruleset_id in (select id from ruleset where linter='ai_oas');
+delete from linted_document where ruleset_id in (select id from ruleset where linter='ai_linter');
+delete from document_lint_task where ruleset_id in (select id from ruleset where linter='ai_linter');
+delete from lint_file_result where ruleset_id in (select id from ruleset where linter='ai_linter');
+delete from ruleset_activation_history where ruleset_id in (select id from ruleset where linter='ai_linter');
 
 delete from linted_document where ruleset_id in (select id from ruleset where api_type='asyncapi-3-0');
 delete from document_lint_task where ruleset_id in (select id from ruleset where api_type='asyncapi-3-0');
 delete from lint_file_result where ruleset_id in (select id from ruleset where api_type='asyncapi-3-0');
+delete from ruleset_activation_history where ruleset_id in (select id from ruleset where api_type='asyncapi-3-0');
 
 alter table linted_document
     add constraint linted_document_pk

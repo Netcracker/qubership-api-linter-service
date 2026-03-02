@@ -417,7 +417,7 @@ func validateApiType(at view.ApiType) error {
 
 func validateLinter(linter view.Linter) error {
 	switch linter {
-	case view.SpectralLinter, view.SpectralAsyncLinter, view.AiOasLinter: // TODO; use linters configuration
+	case view.SpectralLinter, view.AiLinter: // TODO; use linters configuration
 		return nil
 	default:
 		return &exception.CustomError{

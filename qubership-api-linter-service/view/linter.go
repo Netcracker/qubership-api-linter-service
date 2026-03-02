@@ -3,9 +3,8 @@ package view
 type Linter string
 
 const (
-	SpectralLinter      Linter = "spectral"
-	AiOasLinter         Linter = "ai_oas"
-	SpectralAsyncLinter Linter = "spectral_asyncapi"
+	SpectralLinter Linter = "spectral"
+	AiLinter       Linter = "ai_linter"
 
 	UnknownLinter Linter = "unknown"
 )

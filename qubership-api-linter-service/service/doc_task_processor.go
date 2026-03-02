@@ -63,7 +63,7 @@ func (d docTaskProcessorImpl) Start() {
 	for i := 0; i < d.spectralLinterWorkers; i++ {
 		workerId := i
 		utils.SafeAsync(func() {
-			d.runWorkerLoop(view.SpectralLinter, view.SpectralAsyncLinter)
+			d.runWorkerLoop(view.SpectralLinter)
 			log.Tracef("docTaskProcessorImpl: Spectral worker %d exited", workerId)
 		})
 	}
@@ -71,7 +71,7 @@ func (d docTaskProcessorImpl) Start() {
 	for i := 0; i < d.aiLinterWorkers; i++ {
 		workerId := i
 		utils.SafeAsync(func() {
-			d.runWorkerLoop(view.AiOasLinter)
+			d.runWorkerLoop(view.AiLinter)
 			log.Tracef("docTaskProcessorImpl: AI worker %d exited", workerId)
 		})
 	}
@@ -252,7 +252,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	var calcTimeMs int64
 	logDetails := ""
 
-	if task.Linter == view.SpectralLinter || task.Linter == view.SpectralAsyncLinter {
+	if task.Linter == view.SpectralLinter {
 		// TODO: move prepare file here?
 
 		// it might take a long time due to linter lock or just long execution
@@ -306,7 +306,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		log.Tracef("Spectral linter version is %s", LinterVersion)
 	}
 
-	if task.Linter == view.AiOasLinter {
+	if task.Linter == view.AiLinter {
 		doc, err := d.cl.GetDocumentDetails(ctx, task.PackageId, task.Version, task.FileSlug)
 		if err != nil {
 			status = view.StatusError
@@ -460,9 +460,9 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 
 func (d docTaskProcessorImpl) getLinterVersion(linter view.Linter) string {
 	switch linter {
-	case view.SpectralLinter, view.SpectralAsyncLinter:
+	case view.SpectralLinter:
 		return d.spectralExecutor.GetLinterVersion()
-	case view.AiOasLinter:
+	case view.AiLinter:
 		return d.aiOasExecutor.GetLinterVersion()
 	default:
 		return ""

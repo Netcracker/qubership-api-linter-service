@@ -30,7 +30,7 @@ func (l *linterConfigServiceImpl) loadInternalConfigs() []view.InternalLinterCon
 
 	result = append(result, view.InternalLinterConfig{
 		Linter:          view.SpectralLinter,
-		ApiTypes:        []view.ApiType{view.OpenAPI31Type, view.OpenAPI30Type, view.OpenAPI20Type},
+		ApiTypes:        []view.ApiType{view.OpenAPI31Type, view.OpenAPI30Type, view.OpenAPI20Type, view.AsyncAPI30Type},
 		DisplayName:     "Spectral",
 		Enabled:         true,
 		Workers:         l.systemInfoService.GetSpectralLinterWorkers(),
@@ -42,20 +42,7 @@ func (l *linterConfigServiceImpl) loadInternalConfigs() []view.InternalLinterCon
 	})
 
 	result = append(result, view.InternalLinterConfig{
-		Linter:          view.SpectralAsyncLinter,
-		ApiTypes:        []view.ApiType{view.AsyncAPI30Type},
-		DisplayName:     "Spectral",
-		Enabled:         true,
-		Workers:         l.systemInfoService.GetSpectralLinterWorkers(),
-		IncludePackages: []string{"*"},
-		ExcludePackages: nil,
-		LinterSpecificParams: map[string]interface{}{
-			"SpectralBinPath": l.systemInfoService.GetSpectralBinPath(),
-		},
-	})
-
-	result = append(result, view.InternalLinterConfig{
-		Linter:               view.AiOasLinter,
+		Linter:               view.AiLinter,
 		ApiTypes:             []view.ApiType{view.OpenAPI31Type, view.OpenAPI30Type, view.OpenAPI20Type},
 		DisplayName:          "AI Linter",
 		Enabled:              l.systemInfoService.IsAiOasLinterEnabled(),
