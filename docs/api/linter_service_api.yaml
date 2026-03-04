@@ -310,6 +310,15 @@ paths:
           schema:
             type: string
           description: Package version
+        - name: recalculate
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >
+            When true, bypasses the lint cache and forces fresh validation.
+            Use `true` to enable. Omit or use `false` to use cached results when available.
       responses:
         "202":
           description: Validation started successfully
@@ -470,8 +479,7 @@ components:
           type: string
           enum:
             - spectral
-            - ai_oas
-            - spectral_asyncapi
+            - ai_linter
         apiTypes:
           description: API specification types supported by this linter.
           type: array
@@ -554,8 +562,7 @@ components:
           type: string
           enum:
             - spectral
-            - ai_oas
-            - spectral_asyncapi
+            - ai_linter
         createdAt:
           description: Date of ruleset creation.
           type: string
@@ -755,8 +762,7 @@ components:
           type: string
           enum:
             - spectral
-            - ai_oas
-            - spectral_asyncapi
+            - ai_linter
         ruleset:
           $ref: "#/components/schemas/RulesetMetadata"
         issues:

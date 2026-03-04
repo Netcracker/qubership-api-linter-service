@@ -186,10 +186,7 @@ func main() {
 	logsController := controller.NewLogsController()
 	linterController := controller.NewLinterController(linterConfigService)
 
-	// Validate version
-	// TODO: recalculate/force flag to avoid using lint cache for this validation
 	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", security.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
-	// TODO: recalculate/force flag to avoid using lint cache for this validation
 	r.HandleFunc("/api/v1/bulkValidation", security.Secure(validationController.StartBulkValidation)).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/bulkValidation/{jobId}", security.Secure(validationController.GetBulkValidationStatus)).Methods(http.MethodGet)
 

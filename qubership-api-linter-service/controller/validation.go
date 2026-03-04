@@ -71,7 +71,8 @@ func (v *validationControllerImpl) ValidateVersion(w http.ResponseWriter, r *htt
 		return
 	}
 
-	taskId, err := v.validationService.ValidateVersion(ctx, packageId, version, "")
+	recalculate := r.URL.Query().Get("recalculate") == "true"
+	taskId, err := v.validationService.ValidateVersion(ctx, packageId, version, "", recalculate)
 	if err != nil {
 		respondWithError(w, "Failed to start version validation", err)
 		return

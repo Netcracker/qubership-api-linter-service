@@ -202,17 +202,19 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	}
 
 	docHash := utils.CreateSHA256Hash(data)
-
-	// Validation shortcut: reuse cached result if document (by hash) + ruleset was already linted with same linter version
-	currentLinterVersion := d.getLinterVersion(task.Linter)
-	cached, err := d.lintResultRepository.GetLintResult(ctx, docHash, task.RulesetId)
-	if err != nil {
-		log.Warnf("Failed to check lint cache for task %s: %s", task.Id, err)
-	}
-	if cached != nil && cached.LinterVersion == currentLinterVersion {
-		log.Infof("Using cached lint result for doc %s (task id = %s), hash = %s", task.FileId, task.Id, docHash)
-		d.saveLintResultFromCache(ctx, task, docHash, cached, time.Since(start).Milliseconds())
-		return
+	
+	if !task.Recalculate {
+		// Validation shortcut: reuse cached result if document (by hash) + ruleset was already linted with same linter version
+		currentLinterVersion := d.getLinterVersion(task.Linter)
+		cached, err := d.lintResultRepository.GetLintResult(ctx, docHash, task.RulesetId)
+		if err != nil {
+			log.Warnf("Failed to check lint cache for task %s: %s", task.Id, err)
+		}
+		if cached != nil && cached.LinterVersion == currentLinterVersion {
+			log.Infof("Using cached lint result for doc %s (task id = %s), hash = %s", task.FileId, task.Id, docHash)
+			d.saveLintResultFromCache(ctx, task, docHash, cached, time.Since(start).Milliseconds())
+			return
+		}
 	}
 
 	tempDir := filepath.Join(os.TempDir(), task.Id)

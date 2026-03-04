@@ -4,6 +4,7 @@ type BulkValidationRequest struct {
 	PackageId       string   `json:"packageId"`
 	Version         string   `json:"version,omitempty"`
 	ExcludePackages []string `json:"excludePackages,omitempty"`
+	Recalculate     bool     `json:"recalculate,omitempty"`
 }
 
 type BulkValidationStartResponse struct {

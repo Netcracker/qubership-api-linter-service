@@ -152,6 +152,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 				RestartCount:      0,
 				Priority:          0,
 				LintTimeMs:        0,
+				Recalculate:       task.Recalculate,
 			}
 
 			docTasks = append(docTasks, docTaskEnt)

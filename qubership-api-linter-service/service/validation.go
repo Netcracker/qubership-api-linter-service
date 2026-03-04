@@ -34,7 +34,7 @@ import (
 )
 
 type ValidationService interface {
-	ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error)
+	ValidateVersion(ctx context.Context, packageId string, version string, eventId string, recalculate bool) (string, error)
 	GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error)
 	GetVersionSummary_deprecated(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error)
 	GetValidationResult_deprecated(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult_deprecated, error)
@@ -532,7 +532,7 @@ func (v validationServiceImpl) getVersionAndRevision(ctx context.Context, packag
 	return ver, rev, nil
 }
 
-func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string) (string, error) {
+func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string, recalculate bool) (string, error) {
 	pkg, err := v.apihubClient.GetPackageById(ctx, packageId)
 	if err != nil {
 		return "", err
@@ -569,6 +569,7 @@ func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId st
 		EventId:      eventId, // optional
 		RestartCount: 0,
 		Priority:     0,
+		Recalculate:  recalculate,
 	}
 	err = v.verTaskRepo.SaveVersionTask(context.Background(), ent)
 	if err != nil {
@@ -679,7 +680,7 @@ func (v *validationServiceImpl) StartBulkValidation(ctx context.Context, req vie
 
 	asyncCtx := secctx.MakeSysadminContext(context.Background())
 	utils.SafeAsync(func() {
-		v.runBulkValidationJob(asyncCtx, jobId, targetPackages, req.Version)
+		v.runBulkValidationJob(asyncCtx, jobId, targetPackages, req.Version, req.Recalculate)
 	})
 	log.Infof("Bulk validation started for root package %s, jobId is: %s", req.PackageId, jobId)
 
@@ -718,7 +719,7 @@ func (v *validationServiceImpl) GetBulkValidationStatus(ctx context.Context, job
 	}, nil
 }
 
-func (v *validationServiceImpl) runBulkValidationJob(ctx context.Context, jobId string, packageIds []string, versionFilter string) {
+func (v *validationServiceImpl) runBulkValidationJob(ctx context.Context, jobId string, packageIds []string, versionFilter string, recalculate bool) {
 	job := v.getBulkJob(jobId)
 	if job == nil {
 		log.Errorf("Bulk validation job not found: %s", jobId)
@@ -766,7 +767,7 @@ func (v *validationServiceImpl) runBulkValidationJob(ctx context.Context, jobId 
 	}
 
 	for _, item := range schedule {
-		taskId, err := v.ValidateVersion(ctx, item.packageId, item.version, "")
+		taskId, err := v.ValidateVersion(ctx, item.packageId, item.version, "", recalculate)
 
 		job.mu.Lock()
 		entry := view.BulkValidationEntry{
