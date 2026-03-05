@@ -112,7 +112,7 @@ func (d docLintTaskRepositoryImpl) FindFreeDocTask(ctx context.Context, executor
 
 	for {
 		taskFailed := false
-		err = d.cp.GetConnection().RunInTransaction(context.Background(), func(tx *pg.Tx) error {
+		err = d.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
 			var ents []entity.DocumentLintTask
 
 			var queryErr error

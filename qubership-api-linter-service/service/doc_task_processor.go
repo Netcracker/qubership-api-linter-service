@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -61,31 +62,31 @@ type docTaskProcessorImpl struct {
 
 func (d docTaskProcessorImpl) Start() {
 	for i := 0; i < d.spectralLinterWorkers; i++ {
-		workerId := i
+		workerExecutorId := "spectral_" + strconv.Itoa(i) + "_" + d.executorId
 		utils.SafeAsync(func() {
-			d.runWorkerLoop(view.SpectralLinter)
-			log.Tracef("docTaskProcessorImpl: Spectral worker %d exited", workerId)
+			d.runWorkerLoop(workerExecutorId, view.SpectralLinter)
+			log.Infof("docTaskProcessorImpl: Spectral worker %s exited", workerExecutorId)
 		})
 	}
 
 	for i := 0; i < d.aiLinterWorkers; i++ {
-		workerId := i
+		workerExecutorId := "ai_" + strconv.Itoa(i) + "_" + d.executorId
 		utils.SafeAsync(func() {
-			d.runWorkerLoop(view.AiLinter)
-			log.Tracef("docTaskProcessorImpl: AI worker %d exited", workerId)
+			d.runWorkerLoop(workerExecutorId, view.AiLinter)
+			log.Infof("docTaskProcessorImpl: AI worker %s exited", workerExecutorId)
 		})
 	}
 	log.Infof("docTaskProcessorImpl: started %d Spectral and %d AI linter workers", d.spectralLinterWorkers, d.aiLinterWorkers)
 }
 
-func (d docTaskProcessorImpl) runWorkerLoop(linters ...view.Linter) {
+func (d docTaskProcessorImpl) runWorkerLoop(workerExecutorId string, linters ...view.Linter) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
 	running := atomic.Bool{}
 	for {
 		if running.Load() {
-			log.Tracef("docTaskProcessorImpl: worker skipped, still running")
+			log.Tracef("docTaskProcessorImpl id=%s: worker skipped, still running", workerExecutorId)
 			<-ticker.C
 			continue
 		}
@@ -95,13 +96,13 @@ func (d docTaskProcessorImpl) runWorkerLoop(linters ...view.Linter) {
 			// periodic poll
 		case <-d.docTaskNotify:
 			// interrupt sleep and start processing immediately when doc lint task is created
-			log.Tracef("docTaskProcessorImpl: woken by doc task notify")
+			log.Tracef("docTaskProcessorImpl id=%s: woken by doc task notify", workerExecutorId)
 		}
 
 		utils.SafeAsync(func() {
 			running.Store(true)
 			for {
-				moreWork := d.processTask(linters...)
+				moreWork := d.processTask(workerExecutorId, linters...)
 				if !moreWork {
 					break
 				}
@@ -112,15 +113,14 @@ func (d docTaskProcessorImpl) runWorkerLoop(linters ...view.Linter) {
 	}
 }
 
-func (d docTaskProcessorImpl) processTask(linters ...view.Linter) bool {
-	task, err := d.docTaskRepo.FindFreeDocTask(context.Background(), d.executorId, linters...)
+func (d docTaskProcessorImpl) processTask(workerExecutorId string, linters ...view.Linter) bool {
+	task, err := d.docTaskRepo.FindFreeDocTask(context.Background(), workerExecutorId, linters...)
 	if err != nil {
 		log.Errorf("Error finding free doc task: %s", err)
 		return false
 	}
 	if task != nil {
 		d.processDocTask(secctx.MakeSysadminContext(context.Background()), *task)
-		d.writeAsyncTestLog(task.Id)
 		return true
 	}
 	return false
@@ -152,7 +152,7 @@ func (d docTaskProcessorImpl) handleError(ctx context.Context, task entity.Docum
 	}
 
 	err = d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusError, err.Error(),
-		lintTimeMs, verEnt, docEnt, nil, d.executorId)
+		lintTimeMs, verEnt, docEnt, nil, task.ExecutorId)
 	if err != nil {
 		log.Errorf("Handle error for doc task %s failed: unable to save lint result: %s", task.Id, err)
 	}
@@ -169,23 +169,27 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	// Update last_active during long run
 	utils.SafeAsync(func() {
 		t := time.NewTicker(time.Second * 5)
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			break
-		case _, ok := <-t.C:
-			if !ok {
+
+		for {
+			select {
+			case <-ctx.Done():
 				t.Stop()
-				break
-			}
-			err := d.docTaskRepo.SetDocTaskStatus(ctx, task.Id, view.TaskStatusProcessing, "", d.executorId)
-			if err != nil {
-				log.Errorf("Error updating status of doc task %s: %s", task.Id, err)
-			}
-		case _, ok := <-runningC:
-			if !ok {
-				t.Stop()
-				break
+				return
+			case _, ok := <-t.C:
+				if !ok {
+					t.Stop()
+					return
+				}
+				err := d.docTaskRepo.SetDocTaskStatus(ctx, task.Id, view.TaskStatusProcessing, "", task.ExecutorId)
+				if err != nil {
+					log.Errorf("Error updating status of doc task %s: %s", task.Id, err)
+				}
+				log.Tracef("Keepalive for doc task %s", task.Id)
+			case _, ok := <-runningC:
+				if !ok {
+					t.Stop()
+					return
+				}
 			}
 		}
 	})
@@ -202,7 +206,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	}
 
 	docHash := utils.CreateSHA256Hash(data)
-	
+
 	if !task.Recalculate {
 		// Validation shortcut: reuse cached result if document (by hash) + ruleset was already linted with same linter version
 		currentLinterVersion := d.getLinterVersion(task.Linter)
@@ -211,7 +215,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			log.Warnf("Failed to check lint cache for task %s: %s", task.Id, err)
 		}
 		if cached != nil && cached.LinterVersion == currentLinterVersion {
-			log.Infof("Using cached lint result for doc %s (task id = %s), hash = %s", task.FileId, task.Id, docHash)
+			log.Infof("Linter %s: using cached lint result for doc %s (task id = %s), hash = %s", task.Linter, task.FileId, task.Id, docHash)
 			d.saveLintResultFromCache(ctx, task, docHash, cached, time.Since(start).Milliseconds())
 			return
 		}
@@ -260,7 +264,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		// it might take a long time due to linter lock or just long execution
 		var resultPath string
 
-		log.Infof("Processing by spectral doc %s (task id = %s) for package %s, version %s@%d", task.FileId, task.Id, task.PackageId, task.Version, task.Revision)
+		log.Infof("Processing by spectral doc %s (task id = %s) for package %s, version %s@%d. executorId=%s", task.FileId, task.Id, task.PackageId, task.Version, task.Revision, task.ExecutorId)
 		resultPath, calcTimeMs, err = d.spectralExecutor.LintLocalDoc(filePath, rulesetPath)
 		if err != nil {
 			status = view.StatusError
@@ -329,19 +333,20 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 		issueKeys := map[string]struct{}{}
 
 		if status == view.StatusSuccess {
-			log.Infof("Processing by AI linter doc %s (task id = %s) operations count = %d for package %s, version %s@%d", task.FileId, task.Id, len(doc.Operations), task.PackageId, task.Version, task.Revision)
+			log.Infof("Processing by AI linter doc %s (task id = %s) operations count = %d for package %s, version %s@%d. executorId=%s", task.FileId, task.Id, len(doc.Operations), task.PackageId, task.Version, task.Revision, task.ExecutorId)
 
 			var mu sync.Mutex
 			g, gCtx := errgroup.WithContext(ctx)
-			for _, op := range doc.Operations {
-				op := op
+			for _, opIt := range doc.Operations {
+				op := opIt
 				g.Go(func() error {
 					operation, err := d.cl.GetOperationWithData(gCtx, task.PackageId, task.Version, view.RestApiType, op.OperationId)
 					if err != nil {
 						return fmt.Errorf("error getting document details: %w", err)
 					}
 
-					opIssues, opCalcTime, err := d.aiOasExecutor.LintOperationsForDoc(gCtx, string(operation.Data), rulesetData)
+					log.Tracef("Linting operation %s via AI for doc %s (task id = %s) for package %s, version %s@%d. executorId=%s", op.OperationId, task.FileId, task.Id, task.PackageId, task.Version, task.Revision, task.ExecutorId)
+					opIssues, opCalcTime, err := d.aiOasExecutor.LintOperationForDoc(gCtx, string(operation.Data), rulesetData)
 					if err != nil {
 						return fmt.Errorf("error linting doc with AI: %w", err)
 					}
@@ -350,7 +355,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 					for _, opIssue := range opIssues {
 						key := strings.Join(opIssue.Path, ".") + "|" + opIssue.Message // TODO any other data?
 						if _, exists := issueKeys[key]; exists {
-							log.Infof("Excluded as duplicate issue with path %+v and message = '%s' ", opIssue.Path, opIssue.Message)
+							log.Debugf("Excluded as duplicate issue with path %+v and message = '%s' ", opIssue.Path, opIssue.Message)
 							continue
 						}
 						issueKeys[key] = struct{}{}
@@ -365,6 +370,23 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			if err := g.Wait(); err != nil {
 				status = view.StatusError
 				details = err.Error()
+			}
+
+			if status == view.StatusSuccess {
+				var dCalcTime int64
+				issuesCountBefore := len(issues)
+				log.Tracef("Deduplicating %d issues via AI for doc %s (task id = %s) for package %s, version %s@%d. executorId=%s", len(issues), task.FileId, task.Id, task.PackageId, task.Version, task.Revision, task.ExecutorId)
+				issues, dCalcTime, err = d.aiOasExecutor.DeduplicateIssues(ctx, issues)
+				if err != nil {
+					status = view.StatusError
+					details = fmt.Errorf("failed to deduplicate issues: %w", err).Error()
+				} else {
+					issuesCountAfter := len(issues)
+					if issuesCountBefore != issuesCountAfter {
+						log.Infof("Deduplicated AI linter issues from %d to %d", issuesCountBefore, issuesCountAfter)
+					}
+				}
+				calcTimeMs += dCalcTime
 			}
 		}
 
@@ -449,7 +471,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			}
 		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTimeMs, verEnt, docEnt, lintFileResult, d.executorId)
+		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTimeMs, verEnt, docEnt, lintFileResult, task.ExecutorId)
 		if err != nil {
 			d.handleError(ctx, task, fmt.Errorf("failed to save lint result with error: %s", err), time.Since(start).Milliseconds())
 			return
@@ -502,30 +524,8 @@ func (d docTaskProcessorImpl) saveLintResultFromCache(ctx context.Context, task 
 		Summary:       cached.Summary,
 	}
 
-	err := d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusSuccess, "", lintTimeMs, verEnt, docEnt, lintFileResult, d.executorId)
+	err := d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusSuccess, "", lintTimeMs, verEnt, docEnt, lintFileResult, task.ExecutorId)
 	if err != nil {
 		log.Errorf("Failed to save cached lint result for task %s: %s", task.Id, err)
-	}
-}
-
-// TODO: temp! just for testing!
-func (d docTaskProcessorImpl) writeAsyncTestLog(taskId string) {
-	enabled := os.Getenv("TASK_LOG")
-	if enabled == "" {
-		return
-	}
-	fileName := "doc_task_log_" + d.executorId + ".txt"
-
-	// Open the file in append mode, create it if it doesn't exist, with write-only permissions
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Errorf("failed to open test log entry file %s", fileName)
-		return
-	}
-	defer file.Close()
-
-	if _, err := file.WriteString(taskId + "\n"); err != nil {
-		log.Errorf("failed to write test log entry to file %s", fileName)
-		return
 	}
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -228,7 +227,6 @@ func (v versionTaskProcessorImpl) processTask() bool {
 	}
 	if task != nil {
 		v.processVersionLintTask(task.Id)
-		v.writeAsyncTestLog(task.Id)
 		return true
 	}
 	return false
@@ -333,28 +331,6 @@ func (v versionTaskProcessorImpl) handleProcessingFailed(ctx context.Context, ve
 		if updErr != nil {
 			log.Errorf("Failed to increment version lint task %s restart count : %v", verLintTask.Id, updErr)
 		}
-		return
-	}
-}
-
-// TODO: temp! just for testing!
-func (v versionTaskProcessorImpl) writeAsyncTestLog(taskId string) {
-	enabled := os.Getenv("TASK_LOG")
-	if enabled == "" {
-		return
-	}
-	fileName := "ver_task_log_" + v.executorId + ".txt"
-
-	// Open the file in append mode, create it if it doesn't exist, with write-only permissions
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Errorf("failed to open test log entry file %s", fileName)
-		return
-	}
-	defer file.Close()
-
-	if _, err := file.WriteString(taskId + "\n"); err != nil {
-		log.Errorf("failed to write test log entry to file %s", fileName)
 		return
 	}
 }
