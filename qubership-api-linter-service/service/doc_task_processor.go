@@ -313,7 +313,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 	}
 
 	if task.Linter == view.AiLinter {
-		doc, err := d.cl.GetDocumentDetails(ctx, task.PackageId, task.Version, task.FileSlug)
+		doc, err := d.cl.GetDocumentDetails(ctx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), task.FileSlug)
 		if err != nil {
 			status = view.StatusError
 			details = fmt.Sprintf("error getting document details: %s", err)
@@ -340,7 +340,7 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 			for _, opIt := range doc.Operations {
 				op := opIt
 				g.Go(func() error {
-					operation, err := d.cl.GetOperationWithData(gCtx, task.PackageId, task.Version, view.RestApiType, op.OperationId)
+					operation, err := d.cl.GetOperationWithData(gCtx, task.PackageId, fmt.Sprintf("%s@%d", task.Version, task.Revision), view.RestApiType, op.OperationId)
 					if err != nil {
 						return fmt.Errorf("error getting document details: %w", err)
 					}

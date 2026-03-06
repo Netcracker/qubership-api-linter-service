@@ -93,7 +93,7 @@ type bulkValidationJob struct {
 	entries           []view.BulkValidationEntry
 }
 
-func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
+func (v *validationServiceImpl) GetVersionSummary(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
 	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
@@ -161,7 +161,6 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 
 		switch ruleset.Linter {
 		case view.SpectralLinter:
-			// calculate spectral summary
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
 				return nil, err
@@ -171,7 +170,6 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 			}
 			break
 		case view.AiLinter:
-			// calculate summary
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
 				return nil, err
@@ -208,7 +206,7 @@ func (v validationServiceImpl) GetVersionSummary(ctx context.Context, packageId 
 	return result, nil
 }
 
-func (v validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
+func (v *validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context, packageId string, version string) (*view.ValidationSummaryForVersion, error) {
 	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
@@ -276,7 +274,6 @@ func (v validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context,
 
 		switch ruleset.Linter {
 		case view.SpectralLinter:
-			// calculate spectral summary
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
 				return nil, err
@@ -317,7 +314,7 @@ func (v validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context,
 	return result, nil
 }
 
-func (v validationServiceImpl) GetValidationResult_deprecated(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult_deprecated, error) {
+func (v *validationServiceImpl) GetValidationResult_deprecated(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult_deprecated, error) {
 	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
@@ -387,7 +384,7 @@ func (v validationServiceImpl) GetValidationResult_deprecated(ctx context.Contex
 	return &result, nil
 }
 
-func (v validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
+func (v *validationServiceImpl) GetValidationResult(ctx context.Context, packageId string, version string, slug string) (*view.DocumentResult, error) {
 	ver, rev, err := v.getVersionAndRevision(ctx, packageId, version)
 	if err != nil {
 		return nil, err
@@ -507,7 +504,7 @@ func makeSpectralSummary(summary map[string]interface{}) (*view.IssuesSummary, e
 	return &result, nil
 }
 
-func (v validationServiceImpl) getVersionAndRevision(ctx context.Context, packageId string, version string) (string, int, error) {
+func (v *validationServiceImpl) getVersionAndRevision(ctx context.Context, packageId string, version string) (string, int, error) {
 	ver, rev, err := utils.SplitVersionRevision(version)
 	if err != nil {
 		return "", 0, err
@@ -532,7 +529,7 @@ func (v validationServiceImpl) getVersionAndRevision(ctx context.Context, packag
 	return ver, rev, nil
 }
 
-func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string, recalculate bool) (string, error) {
+func (v *validationServiceImpl) ValidateVersion(ctx context.Context, packageId string, version string, eventId string, recalculate bool) (string, error) {
 	pkg, err := v.apihubClient.GetPackageById(ctx, packageId)
 	if err != nil {
 		return "", err
@@ -588,7 +585,7 @@ func (v validationServiceImpl) ValidateVersion(ctx context.Context, packageId st
 
 const tempFolder = "tmp"
 
-func (v validationServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds []string) (map[string]entity.Ruleset, error) {
+func (v *validationServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds []string) (map[string]entity.Ruleset, error) {
 	rulesetMap := make(map[string]entity.Ruleset)
 	for _, rulesetId := range rulesetIds {
 		_, exists := rulesetMap[rulesetId]
@@ -680,6 +677,7 @@ func (v *validationServiceImpl) StartBulkValidation(ctx context.Context, req vie
 
 	asyncCtx := secctx.MakeSysadminContext(context.Background())
 	utils.SafeAsync(func() {
+		// TODO: add ttl
 		v.runBulkValidationJob(asyncCtx, jobId, targetPackages, req.Version, req.Recalculate)
 	})
 	log.Infof("Bulk validation started for root package %s, jobId is: %s", req.PackageId, jobId)

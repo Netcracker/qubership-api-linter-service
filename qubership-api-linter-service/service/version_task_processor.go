@@ -122,6 +122,10 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 			}
 
 			if lr.Linter == view.UnknownLinter {
+				if lr.Err != nil {
+					v.handleProcessingFailed(ctx, *task, fmt.Errorf("failed to select linter: %w", lr.Err))
+					return
+				}
 				log.Infof("Skipping document %s for [ %s | %s ] with unsupported api type: %s", doc.Slug, task.PackageId, task.Version, doc.Type)
 				continue
 			}

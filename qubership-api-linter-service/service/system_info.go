@@ -446,7 +446,7 @@ func (s systemInfoServiceImpl) setAiLinterWorkers() {
 		}
 	}
 	if workers <= 0 {
-		workers = 3
+		workers = 1
 	}
 	s.systemInfoMap[AI_LINTER_WORKERS] = workers
 }

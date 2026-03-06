@@ -403,7 +403,7 @@ func (c rulesetControllerImpl) DeleteRuleset(w http.ResponseWriter, r *http.Requ
 
 func validateApiType(at view.ApiType) error {
 	switch at {
-	case view.OpenAPI20Type, view.OpenAPI30Type, view.OpenAPI31Type:
+	case view.OpenAPI20Type, view.OpenAPI30Type, view.OpenAPI31Type, view.AsyncAPI30Type:
 		return nil
 	default:
 		return &exception.CustomError{
