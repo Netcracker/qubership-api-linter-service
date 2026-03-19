@@ -93,3 +93,55 @@ func (i *IssuesSummary) Append(add IssuesSummary) {
 	i.Warning += add.Warning
 	i.Info += add.Info
 }
+
+const (
+	ApiAudienceInternal = "internal"
+	ApiAudienceExternal = "external"
+	ApiAudienceUnknown  = "unknown"
+)
+
+type VersionChangesView struct {
+	PreviousVersion          string                             `json:"previousVersion"`
+	PreviousVersionPackageId string                             `json:"previousVersionPackageId"`
+	Operations               []OperationComparisonChangelogView `json:"operations"`
+	Packages                 map[string]PackageVersionRef       `json:"packages,omitempty"`
+}
+
+type OperationComparisonChangelogView struct {
+	CurrentOperation  *ComparisonOperationView `json:"currentOperation,omitempty"`
+	PreviousOperation *ComparisonOperationView `json:"previousOperation,omitempty"`
+	ChangeSummary     ChangeSummary            `json:"changeSummary"`
+}
+
+type PackageVersionRef struct {
+	RefPackageId      string     `json:"refId"`
+	Kind              string     `json:"kind"`
+	RefPackageName    string     `json:"name"`
+	RefPackageVersion string     `json:"version"`
+	Status            string     `json:"status"`
+	DeletedAt         *time.Time `json:"deletedAt,omitempty"`
+	DeletedBy         string     `json:"deletedBy,omitempty"`
+	ParentNames       []string   `json:"parentPackages,omitempty"`
+	ServiceName       string     `json:"-"`
+	NotLatestRevision bool       `json:"notLatestRevision,omitempty"`
+}
+
+type GenericComparisonOperationView struct {
+	Title       string `json:"title"`
+	ApiKind     string `json:"apiKind,omitempty"`
+	ApiAudience string `json:"apiAudience"`
+	DataHash    string `json:"dataHash,omitempty"`
+	PackageRef  string `json:"packageRef"`
+	OperationId string `json:"operationId"`
+}
+
+type ComparisonOperationView struct {
+	GenericComparisonOperationView
+}
+
+type CompareVersionsReq struct {
+	PackageId                string `json:"packageId" validate:"required"`
+	Version                  string `json:"version" validate:"required"`
+	PreviousVersion          string `json:"previousVersion" validate:"required"`
+	PreviousVersionPackageId string `json:"previousVersionPackageId" validate:"required"`
+}

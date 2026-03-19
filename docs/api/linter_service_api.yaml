@@ -18,6 +18,8 @@ tags:
     description: API for retrieving Spectral validation results for package versions.
   - name: Validation Operations
     description: API operations for managing validation processes.
+  - name: Scoring
+    description: API for retrieving version scoring (quality and backwards compatibility).
 paths:
   /api/v1/linters:
     get:
@@ -277,6 +279,60 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/packages/{packageId}/versions/{version}/scoring:
+    get:
+      tags:
+        - Scoring
+      summary: Get scoring for a package version
+      description: >
+        Returns the scoring result for the specified package version, including overall status,
+        backwards compatibility details, and quality check results from each linter.
+        The version parameter may include revision (e.g., `1.0.0@1`) or omit it to resolve the latest revision.
+      operationId: getScoringForVersion
+      parameters:
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique package identifier
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Package version (optionally with revision, e.g. 1.0.0@1)
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionScore"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Scoring not found for the package version
           content:
             application/json:
               schema:
@@ -796,6 +852,100 @@ components:
         message:
           description: Description of the validation issue.
           type: string
+    VersionScore:
+      description: Scoring result for a package version.
+      type: object
+      required:
+        - status
+        - details
+      properties:
+        status:
+          description: Overall scoring status.
+          type: string
+          enum:
+            - passed
+            - passed_with_defects
+            - blocked
+        details:
+          $ref: "#/components/schemas/ScoringDetails"
+    ScoringDetails:
+      description: Detailed scoring breakdown.
+      type: object
+      required:
+        - backwards_compatibility
+        - quality_check
+      properties:
+        backwards_compatibility:
+          $ref: "#/components/schemas/BackwardsCompatibilityDetails"
+        quality_check:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualityCheckResult"
+    BackwardsCompatibilityDetails:
+      description: Backwards compatibility analysis.
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - passed
+            - passed_with_defects
+            - blocked
+        breaking:
+          type: integer
+          description: Total breaking changes count.
+        breaking_internal:
+          type: integer
+          description: Breaking changes for internal audience.
+        breaking_external:
+          type: integer
+          description: Breaking changes for external audience.
+        breaking_unknown:
+          type: integer
+          description: Breaking changes for unknown audience.
+        internal_2_unknown:
+          type: integer
+          description: Internal to unknown audience transitions.
+        external_2_internal:
+          type: integer
+          description: External to internal audience transitions.
+        external_2_unknown:
+          type: integer
+          description: External to unknown audience transitions.
+        internal_errors:
+          type: array
+          items:
+            type: string
+    QualityCheckResult:
+      description: Quality check result from a single linter.
+      type: object
+      required:
+        - linter
+        - status
+        - errors_count
+        - warnings_count
+      properties:
+        linter:
+          type: string
+          enum:
+            - spectral
+            - ai_linter
+        status:
+          type: string
+          enum:
+            - passed
+            - passed_with_defects
+            - blocked
+        errors_count:
+          type: integer
+        warnings_count:
+          type: integer
+        internal_errors:
+          type: array
+          items:
+            type: string
   securitySchemes:
     BearerAuth:
       type: http
