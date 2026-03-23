@@ -325,14 +325,15 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 				lintedVerEnt.LintedAt = time.Now()
 
 				scoreEnt := entity.VersionScore{
-					PackageId: lintedVerEnt.PackageId,
-					Version:   lintedVerEnt.Version,
-					Revision:  lintedVerEnt.Revision,
-					ScoredAt:  time.Now(),
-					Status:    score.Status,
-					Reason:    score.Reason,
-					Debug:     score.Debug,
-					Details:   score.Details,
+					PackageId:                    lintedVerEnt.PackageId,
+					Version:                      lintedVerEnt.Version,
+					Revision:                     lintedVerEnt.Revision,
+					ScoredAt:                     time.Now(),
+					Status:                       score.Status,
+					Reasons:                      score.Reasons,
+					Debug:                        score.Debug,
+					BackwardCompatibilityDetails: score.BackwardCompatibilityDetails,
+					QualityCheckDetails:          score.QualityCheckDetails,
 				}
 
 				err = v.verRepo.VersionLintCompleted(ctx, verLintTask.Id, lintedVerEnt, &scoreEnt)

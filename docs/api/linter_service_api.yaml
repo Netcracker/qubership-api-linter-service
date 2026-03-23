@@ -295,8 +295,9 @@ paths:
         - Scoring
       summary: Get scoring for a package version
       description: >
-        Returns the scoring result for the specified package version, including overall status,
-        backwards compatibility details, and quality check results from each linter.
+        Returns the scoring result for the specified package version: overall `status`, human-readable
+        `reason` and optional `debug` messages, `backwardsCompatibilityDetails` per API kind
+        (`rest`, `graphql`, `asyncapi`), and `qualityCheckDetails` with linter results per API kind.
         The version parameter may include revision (e.g., `1.0.0@1`) or omit it to resolve the latest revision.
       operationId: getScoringForVersion
       parameters:
@@ -857,7 +858,6 @@ components:
       type: object
       required:
         - status
-        - details
       properties:
         status:
           description: Overall scoring status.
@@ -866,23 +866,52 @@ components:
             - passed
             - passed_with_defects
             - blocked
-        details:
-          $ref: "#/components/schemas/ScoringDetails"
-    ScoringDetails:
-      description: Detailed scoring breakdown.
-      type: object
-      required:
-        - backwards_compatibility
-        - quality_check
-      properties:
-        backwards_compatibility:
-          $ref: "#/components/schemas/BackwardsCompatibilityDetails"
-        quality_check:
+        reason:
+          description: Human-readable reasons for the overall status.
           type: array
           items:
-            $ref: "#/components/schemas/QualityCheckResult"
+            type: string
+        debug:
+          description: Diagnostic messages for troubleshooting.
+          type: array
+          items:
+            type: string
+        backwardsCompatibilityDetails:
+          description: >
+            Backwards compatibility breakdown per API kind. A property is present only when that API type
+            exists for the version.
+          type: object
+          properties:
+            rest:
+              $ref: "#/components/schemas/BackwardsCompatibilityDetails"
+            graphql:
+              $ref: "#/components/schemas/BackwardsCompatibilityDetails"
+            protobuf:
+              $ref: "#/components/schemas/BackwardsCompatibilityDetails"
+            asyncapi:
+              $ref: "#/components/schemas/BackwardsCompatibilityDetails"
+        qualityCheckDetails:
+          description: Quality check results from each linter, grouped by API kind.
+          type: object
+          properties:
+            rest:
+              type: array
+              items:
+                $ref: "#/components/schemas/QualityCheckDetails"
+            graphql:
+              type: array
+              items:
+                $ref: "#/components/schemas/QualityCheckDetails"
+            protobuf:
+              type: array
+              items:
+                $ref: "#/components/schemas/QualityCheckDetails"
+            asyncapi:
+              type: array
+              items:
+                $ref: "#/components/schemas/QualityCheckDetails"
     BackwardsCompatibilityDetails:
-      description: Backwards compatibility analysis.
+      description: Backwards compatibility analysis for one API kind.
       type: object
       required:
         - status
@@ -893,39 +922,38 @@ components:
             - passed
             - passed_with_defects
             - blocked
+        reason:
+          type: string
+          description: Summary reason for this section's status.
         breaking:
           type: integer
           description: Total breaking changes count.
-        breaking_internal:
+        breakingInternal:
           type: integer
           description: Breaking changes for internal audience.
-        breaking_external:
+        breakingExternal:
           type: integer
           description: Breaking changes for external audience.
-        breaking_unknown:
+        breakingUnknown:
           type: integer
           description: Breaking changes for unknown audience.
-        internal_2_unknown:
+        internal2Unknown:
           type: integer
           description: Internal to unknown audience transitions.
-        external_2_internal:
+        external2Internal:
           type: integer
           description: External to internal audience transitions.
-        external_2_unknown:
+        external2Unknown:
           type: integer
           description: External to unknown audience transitions.
-        internal_errors:
-          type: array
-          items:
-            type: string
-    QualityCheckResult:
-      description: Quality check result from a single linter.
+    QualityCheckDetails:
+      description: Quality check result from a single linter for one API kind.
       type: object
       required:
         - linter
         - status
-        - errors_count
-        - warnings_count
+        - errorsCount
+        - warningsCount
       properties:
         linter:
           type: string
@@ -938,14 +966,16 @@ components:
             - passed
             - passed_with_defects
             - blocked
-        errors_count:
+        reason:
+          type: string
+          description: Summary reason for this linter's result.
+        errorsCount:
           type: integer
-        warnings_count:
+        warningsCount:
           type: integer
-        internal_errors:
-          type: array
-          items:
-            type: string
+        internalErrors:
+          type: string
+          description: Set when the linter failed internally (optional).
   securitySchemes:
     BearerAuth:
       type: http

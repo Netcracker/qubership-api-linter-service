@@ -49,3 +49,14 @@ type CommonOperationView struct {
 	ApiType     string `json:"apiType"`
 	ApiAudience string `json:"apiAudience"`
 }
+
+func ApiTypeToOpApiType(apiType ApiType) OpApiType {
+	switch apiType {
+	case OpenAPI20Type, OpenAPI30Type, OpenAPI31Type:
+		return RestApiType
+	case AsyncAPI30Type:
+		return AsyncapiApiType
+	default:
+		return ""
+	}
+}

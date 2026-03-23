@@ -19,7 +19,7 @@ type VersionContent struct {
 }
 
 type VersionOperationType struct {
-	ApiType                         string                  `json:"apiType"`
+	ApiType                         OpApiType               `json:"apiType"`
 	OperationsCount                 *int                    `json:"operationsCount,omitempty"`
 	DeprecatedCount                 *int                    `json:"deprecatedCount,omitempty"`
 	NoBwcOperationsCount            *int                    `json:"noBwcOperationsCount,omitempty"`

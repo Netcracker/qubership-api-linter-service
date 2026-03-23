@@ -55,95 +55,122 @@ func (s *scoringServiceImpl) GetScoringForVersion(ctx context.Context, packageId
 	}
 
 	return &view.VersionScore{
-		Status:  ent.Status,
-		Reason:  ent.Reason,
-		Debug:   ent.Debug,
-		Details: ent.Details,
+		Status:                       ent.Status,
+		Reasons:                      ent.Reasons,
+		Debug:                        ent.Debug,
+		BackwardCompatibilityDetails: ent.BackwardCompatibilityDetails,
+		QualityCheckDetails:          ent.QualityCheckDetails,
 	}, nil
 }
 
-func (s *scoringServiceImpl) CalculateScore(ctx context.Context, packageId, version string, revision int) (view.VersionScore, error) {
-	score := view.VersionScore{
-		Status: view.ScoringPassed,
-		Details: view.ScoringDetails{
-			BackwardsCompatibility: view.BackwardsCompatibilityDetails{},
-			QualityCheck:           []view.ValidationDetails{},
-		},
-	}
-
-	versionStr := fmt.Sprintf("%s@%d", version, revision)
-
-	score.Details.BackwardsCompatibility = s.calculateBackwardsCompatibility(ctx, packageId, versionStr)
-
+func (s *scoringServiceImpl) calculateQualityCheck(ctx context.Context, packageId, version string, revision int) (map[view.OpApiType][]view.QualityCheckDetails, error) {
 	lintedVer, lintedDocs, err := s.versionResultRepo.GetVersionAndDocsSummary(ctx, packageId, version, revision)
 	if err != nil {
-		return score, fmt.Errorf("failed to get version and docs summary: %w", err)
+		return nil, fmt.Errorf("failed to get version and docs lint result: %w", err)
 	}
 	if lintedVer == nil || lintedDocs == nil {
-		return score, fmt.Errorf("version %s not found for package %s", versionStr, packageId)
+		return nil, fmt.Errorf("version %s@%d lint result not found for package %s", version, revision, packageId)
 	}
 
 	idToRulesetMap, err := s.makeRulesetMap(ctx, makeRulesetIdsFromLintedDocs(lintedDocs))
 	if err != nil {
-		score.Status = view.ScoringBlocked
-		score.Reason = fmt.Sprintf("Internal error: unable to get rulesets")
-		score.Debug = err.Error()
-		return score, fmt.Errorf("failed to make ruleset map: %w", err)
+		return nil, fmt.Errorf("failed to make ruleset map: %w", err)
 	}
 
-	var totalErrors, totalWarnings int
+	result := map[view.OpApiType][]view.QualityCheckDetails{}
+
+	//var totalErrors, totalWarnings int
 	for _, doc := range lintedDocs {
+		opApiType := view.ApiTypeToOpApiType(doc.SpecificationType)
+		if opApiType == "" {
+			return nil, fmt.Errorf("unsupported API type: %s", doc.SpecificationType)
+		}
+
 		vd := s.buildValidationDetails(ctx, doc, idToRulesetMap)
 		if vd != nil {
-			score.Details.QualityCheck = append(score.Details.QualityCheck, *vd)
+			/*score.Details.QualityCheck = append(score.Details.QualityCheck, *vd)
 			totalErrors += vd.ErrorsCount
-			totalWarnings += vd.WarningsCount
+			totalWarnings += vd.WarningsCount*/
+
+			result[opApiType] = append(result[opApiType], *vd)
+
 		}
 	}
+	return result, nil
+}
 
-	score.Status = score.Details.BackwardsCompatibility.Status
-	score.Reason = score.Details.BackwardsCompatibility.Reason
-	for _, lr := range score.Details.QualityCheck {
-		if lr.Status == view.ScoringPassedWithDefects {
-			if score.Status == view.ScoringPassed {
+func (s *scoringServiceImpl) CalculateScore(ctx context.Context, packageId, version string, revision int) (view.VersionScore, error) {
+	score := view.VersionScore{
+		Status:                       view.ScoringPassed,
+		BackwardCompatibilityDetails: nil,
+		QualityCheckDetails:          nil,
+	}
+	var err error
+
+	versionStr := fmt.Sprintf("%s@%d", version, revision)
+
+	score.BackwardCompatibilityDetails, err = s.calculateBackwardsCompatibility(ctx, packageId, versionStr)
+	if err != nil {
+		score.Status = view.ScoringBlocked
+		score.Reasons = append(score.Reasons, "Internal error: failed to calculate backwards compatibility details.")
+		score.Debug = append(score.Debug, err.Error())
+	}
+
+	score.QualityCheckDetails, err = s.calculateQualityCheck(ctx, packageId, version, revision)
+	if err != nil {
+		score.Status = view.ScoringBlocked
+		score.Reasons = append(score.Reasons, "Internal error: failed to calculate backwards compatibility details.")
+		score.Debug = append(score.Debug, err.Error())
+	}
+
+	if score.Status != view.ScoringBlocked {
+		for _, bwc := range score.BackwardCompatibilityDetails {
+			if bwc.Status == view.ScoringBlocked {
+				score.Status = view.ScoringBlocked
+			}
+			if score.Status == view.ScoringPassed && bwc.Status == view.ScoringPassedWithDefects {
 				score.Status = view.ScoringPassedWithDefects
-				if score.Reason != "" {
-					score.Reason += " " + lr.Reason
-				} else {
-					score.Reason = lr.Reason
-				}
+			}
+			if bwc.Reason != "" {
+				score.Reasons = append(score.Reasons, bwc.Reason)
 			}
 		}
-		if lr.Status == view.ScoringBlocked {
-			score.Status = view.ScoringBlocked
-			if score.Reason != "" {
-				score.Reason += " " + lr.Reason
-			} else {
-				score.Reason = lr.Reason
+
+		for _, qcArr := range score.QualityCheckDetails {
+			for _, qc := range qcArr {
+				if qc.Status == view.ScoringBlocked {
+					score.Status = view.ScoringBlocked
+				}
+				if score.Status == view.ScoringPassed && qc.Status == view.ScoringPassedWithDefects {
+					score.Status = view.ScoringPassedWithDefects
+				}
+				if qc.Reason != "" {
+					score.Reasons = append(score.Reasons, qc.Reason)
+				}
 			}
 		}
 	}
 	return score, nil
 }
 
-func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc entity.LintedDocument, rulesetMap map[string]entity.Ruleset) *view.ValidationDetails {
+func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc entity.LintedDocument, rulesetMap map[string]entity.Ruleset) *view.QualityCheckDetails {
 	ruleset, ok := rulesetMap[doc.RulesetId]
 	if !ok {
 		return nil
 	}
 
-	vd := &view.ValidationDetails{
-		Linter:         ruleset.Linter,
-		Status:         view.ScoringPassed,
-		Reason:         "",
-		ErrorsCount:    0,
-		WarningsCount:  0,
-		InternalErrors: nil,
+	vd := &view.QualityCheckDetails{
+		Linter:        ruleset.Linter,
+		Status:        view.ScoringPassed,
+		Reason:        "",
+		ErrorsCount:   0,
+		WarningsCount: 0,
+		InternalError: "",
 	}
 
 	if doc.LintStatus == view.StatusError {
 		vd.Status = view.ScoringBlocked
-		vd.InternalErrors = append(vd.InternalErrors, doc.LintDetails)
+		vd.InternalError = doc.LintDetails
 		vd.Reason = fmt.Sprintf("Validation internal error for linter %s.", ruleset.Linter)
 		return vd
 	}
@@ -151,7 +178,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 	summary, err := s.lintResultRepo.GetLintResultSummary(ctx, doc.DataHash, doc.RulesetId)
 	if err != nil {
 		vd.Status = view.ScoringBlocked
-		vd.InternalErrors = append(vd.InternalErrors, fmt.Sprintf("failed to get lint result: %s", err))
+		vd.InternalError = fmt.Sprintf("failed to get lint result: %s", err)
 		vd.Reason = fmt.Sprintf("Validation internal error")
 		return vd
 	}
@@ -162,7 +189,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 	issues, err := makeSpectralSummary(summary.Summary)
 	if err != nil {
 		vd.Status = view.ScoringBlocked
-		vd.InternalErrors = append(vd.InternalErrors, fmt.Sprintf("failed to parse lint summary: %s", err))
+		vd.InternalError = fmt.Sprintf("failed to parse lint summary: %s", err)
 		vd.Reason = fmt.Sprintf("Validation internal error")
 		return vd
 	}
@@ -183,205 +210,212 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 
 const breakingMessage = "found breaking change for package %s version %s operation %s:%s"
 
-func (s *scoringServiceImpl) calculateBackwardsCompatibility(ctx context.Context, packageId, version string) view.BackwardsCompatibilityDetails {
-	bwc := view.BackwardsCompatibilityDetails{
-		Status: view.ScoringPassed,
-	}
+func (s *scoringServiceImpl) calculateBackwardsCompatibility(ctx context.Context, packageId, version string) (map[view.OpApiType]view.BackwardCompatibilityDetails, error) {
+	result := map[view.OpApiType]view.BackwardCompatibilityDetails{}
 
-	versionContent, err := s.apihubClient.GetVersion(ctx, packageId, version)
+	versionContent, err := s.apihubClient.GetVersion(ctx, packageId, version, true, true)
 	if err != nil {
-		bwc.Status = view.ScoringBlocked
-		bwc.InternalErrors = append(bwc.InternalErrors, fmt.Sprintf("failed to get version %s for package %s : %s", version, packageId, err))
-		return bwc
+		return nil, fmt.Errorf("failed to get version %s for package %s : %s", version, packageId, err)
 	}
 	if versionContent == nil {
-		bwc.Status = view.ScoringBlocked
-		bwc.InternalErrors = append(bwc.InternalErrors, fmt.Sprintf("version %s not found for package %s", version, packageId))
-		return bwc
+		return nil, fmt.Errorf("version %s not found for package %s", version, packageId)
 	}
 	if versionContent.PreviousVersion == "" {
 		// TODO: check releases, etc
-		return bwc
+		return result, nil
 	}
 
 	if versionContent.PreviousVersionPackageId == "" {
 		versionContent.PreviousVersionPackageId = packageId
 	}
-	previousVersionContent, err := s.apihubClient.GetVersion(ctx, versionContent.PreviousVersionPackageId, versionContent.PreviousVersion)
+	previousVersionContent, err := s.apihubClient.GetVersion(ctx, versionContent.PreviousVersionPackageId, versionContent.PreviousVersion, false, false)
 	if err != nil {
-		bwc.Status = view.ScoringBlocked
-		bwc.InternalErrors = append(bwc.InternalErrors, fmt.Sprintf("failed to get previous version %s for package %s", versionContent.PreviousVersion, versionContent.PreviousVersionPackageId))
-		return bwc
+		return nil, fmt.Errorf("failed to get previous version %s for package %s", versionContent.PreviousVersion, versionContent.PreviousVersionPackageId)
 	}
 	if previousVersionContent == nil {
-		bwc.Status = view.ScoringBlocked
-		bwc.InternalErrors = append(bwc.InternalErrors, fmt.Sprintf("(previous) version %s not found for package %s", versionContent.PreviousVersion, versionContent.PreviousVersionPackageId))
-		return bwc
+		return nil, fmt.Errorf("(previous) version %s not found for package %s", versionContent.PreviousVersion, versionContent.PreviousVersionPackageId)
 	}
 
-	var changesResp *view.VersionChangesView = nil
-	page := 0
-	limit := 100
-	breakingForTransition := ""
-	transitionMessage := ""
+	// TODO: switch to ApiAudienceTransitions ???
+	// TODO: calculate breaking for audience on Apihub or builder???
+	
+	for _, ot := range versionContent.OperationTypes {
+		bwc := view.BackwardCompatibilityDetails{
+			Status:            view.ScoringPassed,
+			Reason:            "",
+			Breaking:          0,
+			BreakingInternal:  0,
+			BreakingExternal:  0,
+			BreakingUnknown:   0,
+			Internal2Unknown:  0,
+			External2Internal: 0,
+			External2Unknown:  0,
+		}
 
-	for {
-		changesRespIt, err :=
-			s.apihubClient.GetVersionChanges(
-				ctx,
-				versionContent.PackageId,
-				versionContent.Version,
-				versionContent.PreviousVersionPackageId,
-				versionContent.PreviousVersion,
-				string(view.RestApiType), // TODO: need to support all API types!
-				limit, page)
-		if err != nil {
-			bwc.Status = view.ScoringBlocked
-			bwc.InternalErrors = append(bwc.InternalErrors, fmt.Sprintf("failed to get changes for package %s version %s: %s", packageId, version, err))
-			return bwc
-		}
-		if changesRespIt == nil {
-			break
-		}
-		if changesResp == nil {
-			changesResp = changesRespIt
-		} else {
-			changesResp.Operations = append(changesResp.Operations, changesRespIt.Operations...)
-		}
-		for key, value := range changesRespIt.Packages {
-			changesResp.Packages[key] = value
-		}
-		if len(changesRespIt.Operations) < limit {
-			break
-		} else {
-			page += 1
-		}
-	}
+		var changesResp *view.VersionChangesView = nil
+		page := 0
+		limit := 100
+		breakingForTransition := ""
+		transitionMessage := ""
 
-	// collect operation audience for the current version
-	opMap, opMapErr := s.makeOperationMap(ctx, versionContent.PackageId, versionContent.Version, view.RestApiType) // TODO: need to support all API types!
-	if opMapErr != nil {
-		opMap = make(map[string]string)
-	}
-	// collect operation audience for the previous version operations
-	popMap := make(map[string]string)
-	popMap, opMapErr = s.makeOperationMap(ctx, previousVersionContent.PackageId, previousVersionContent.Version, view.RestApiType) // TODO: need to support all API types!
-	if opMapErr != nil {
-		popMap = make(map[string]string)
-	}
-	// iterate all changes
-	if changesResp != nil {
-		for _, cr := range changesResp.Operations {
-			var opID string
-			if cr.CurrentOperation != nil {
-				opID = cr.CurrentOperation.OperationId
+		for {
+			changesRespIt, err :=
+				s.apihubClient.GetVersionChanges(
+					ctx,
+					versionContent.PackageId,
+					versionContent.Version,
+					versionContent.PreviousVersionPackageId,
+					versionContent.PreviousVersion,
+					string(ot.ApiType),
+					limit, page)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get the changes for package %s version %s : %w", packageId, version, err)
+			}
+			if changesRespIt == nil {
+				break
+			}
+			if changesResp == nil {
+				changesResp = changesRespIt
 			} else {
-				opID = cr.PreviousOperation.OperationId
+				changesResp.Operations = append(changesResp.Operations, changesRespIt.Operations...)
 			}
+			for key, value := range changesRespIt.Packages {
+				changesResp.Packages[key] = value
+			}
+			if len(changesRespIt.Operations) < limit {
+				break
+			} else {
+				page += 1
+			}
+		}
 
-			var crApiAudience, prevAudience, apiAudience string
-			var found, foundPrev bool
-			if cr.CurrentOperation != nil {
-				// current operation audience
-				crApiAudience, found = opMap[cr.CurrentOperation.OperationId]
-				if !found {
-					crApiAudience = view.ApiAudienceUnknown
-				}
-				apiAudience = crApiAudience
-			}
-			if cr.PreviousOperation != nil {
-				// previous operation audience
-				prevAudience, foundPrev = popMap[cr.PreviousOperation.OperationId]
-				if !foundPrev {
-					prevAudience = view.ApiAudienceUnknown
-				}
-				if apiAudience == "" {
-					apiAudience = prevAudience
-				}
-			}
-
-			if crApiAudience != "" && prevAudience != "" {
-				if prevAudience == view.ApiAudienceExternal {
-					switch crApiAudience {
-					case view.ApiAudienceInternal:
-						bwc.External2Internal++
-					case view.ApiAudienceUnknown:
-						bwc.External2Unknown++
-					}
+		// collect operation audience for the current version
+		opMap, opMapErr := s.makeOperationMap(ctx, versionContent.PackageId, versionContent.Version, ot.ApiType)
+		if opMapErr != nil {
+			opMap = make(map[string]string)
+		}
+		// collect operation audience for the previous version operations
+		popMap := make(map[string]string)
+		popMap, opMapErr = s.makeOperationMap(ctx, previousVersionContent.PackageId, previousVersionContent.Version, ot.ApiType)
+		if opMapErr != nil {
+			popMap = make(map[string]string)
+		}
+		// iterate all changes
+		if changesResp != nil {
+			for _, cr := range changesResp.Operations {
+				var opID string
+				if cr.CurrentOperation != nil {
+					opID = cr.CurrentOperation.OperationId
 				} else {
-					if prevAudience == view.ApiAudienceInternal && crApiAudience == view.ApiAudienceUnknown {
-						bwc.Internal2Unknown++
-					}
+					opID = cr.PreviousOperation.OperationId
 				}
-				if isTransitionForbidden(crApiAudience, prevAudience) && transitionMessage == "" {
-					transitionMessage = fmt.Sprintf("found forbidden API audience transition for package %s version %s operation %s:%s=>%s", packageId, version, opID, crApiAudience, prevAudience)
-				}
-			}
 
-			// skip non-breaking
-			if cr.ChangeSummary.Breaking < 1 {
-				continue
-			}
-			// count breaking
-			bwc.Breaking += cr.ChangeSummary.Breaking
-			switch apiAudience {
-			case view.ApiAudienceInternal:
-				bwc.BreakingInternal += cr.ChangeSummary.Breaking
-			case view.ApiAudienceExternal:
-				{
-					bwc.BreakingExternal += cr.ChangeSummary.Breaking
-					if breakingForTransition == "" {
-						breakingForTransition = fmt.Sprintf(breakingMessage, packageId, version, opID, apiAudience)
+				var crApiAudience, prevAudience, apiAudience string
+				var found, foundPrev bool
+				if cr.CurrentOperation != nil {
+					// current operation audience
+					crApiAudience, found = opMap[cr.CurrentOperation.OperationId]
+					if !found {
+						crApiAudience = view.ApiAudienceUnknown
+					}
+					apiAudience = crApiAudience
+				}
+				if cr.PreviousOperation != nil {
+					// previous operation audience
+					prevAudience, foundPrev = popMap[cr.PreviousOperation.OperationId]
+					if !foundPrev {
+						prevAudience = view.ApiAudienceUnknown
+					}
+					if apiAudience == "" {
+						apiAudience = prevAudience
 					}
 				}
-			case view.ApiAudienceUnknown:
-				{
-					bwc.BreakingUnknown += cr.ChangeSummary.Breaking
-					if breakingForTransition == "" {
-						breakingForTransition = fmt.Sprintf(breakingMessage, packageId, version, opID, apiAudience)
+
+				if crApiAudience != "" && prevAudience != "" {
+					if prevAudience == view.ApiAudienceExternal {
+						switch crApiAudience {
+						case view.ApiAudienceInternal:
+							bwc.External2Internal++
+						case view.ApiAudienceUnknown:
+							bwc.External2Unknown++
+						}
+					} else {
+						if prevAudience == view.ApiAudienceInternal && crApiAudience == view.ApiAudienceUnknown {
+							bwc.Internal2Unknown++
+						}
+					}
+					if isTransitionForbidden(crApiAudience, prevAudience) && transitionMessage == "" {
+						transitionMessage = fmt.Sprintf("found forbidden API audience transition for package %s version %s operation %s:%s=>%s", packageId, version, opID, crApiAudience, prevAudience)
+					}
+				}
+
+				// skip non-breaking
+				if cr.ChangeSummary.Breaking < 1 {
+					continue
+				}
+				// count breaking
+				bwc.Breaking += cr.ChangeSummary.Breaking
+				switch apiAudience {
+				case view.ApiAudienceInternal:
+					bwc.BreakingInternal += cr.ChangeSummary.Breaking
+				case view.ApiAudienceExternal:
+					{
+						bwc.BreakingExternal += cr.ChangeSummary.Breaking
+						if breakingForTransition == "" {
+							breakingForTransition = fmt.Sprintf(breakingMessage, packageId, version, opID, apiAudience)
+						}
+					}
+				case view.ApiAudienceUnknown:
+					{
+						bwc.BreakingUnknown += cr.ChangeSummary.Breaking
+						if breakingForTransition == "" {
+							breakingForTransition = fmt.Sprintf(breakingMessage, packageId, version, opID, apiAudience)
+						}
 					}
 				}
 			}
 		}
-	}
 
-	if bwc.Breaking == 0 {
-		// no breaking changes totally
-		if bwc.Internal2Unknown == 0 && bwc.External2Internal == 0 && bwc.External2Unknown == 0 {
-			bwc.Status = view.ScoringPassed
-		} else {
-			bwc.Status = view.ScoringPassedWithDefects
-			bwc.Reason = fmt.Sprintf("%d operations changed audience from external to internal, %d operations changed audience from external to unknown, %d operations changed audience from internal to unknown.", bwc.External2Internal, bwc.External2Unknown, bwc.Internal2Unknown)
-		}
-	} else {
-		// there are some breaking changes
-		reasonTransitionPart := ""
-		if bwc.External2Internal != 0 || bwc.External2Unknown != 0 {
-			reasonTransitionPart += fmt.Sprintf("%d operations changed audience from external to internal, %d operations changed audience from external to unknown.", bwc.External2Internal, bwc.External2Unknown)
-		}
-
-		if bwc.BreakingExternal != 0 {
-			bwc.Status = view.ScoringBlocked
-			bwc.Reason = fmt.Sprintf("Version contains %d breaking change(s) in external operation(s).", bwc.BreakingExternal)
-			if bwc.BreakingUnknown != 0 {
-				bwc.Reason += fmt.Sprintf(" Version contains %d breaking change(s) in unknown operation(s).", bwc.BreakingUnknown)
-			}
-		} else {
-			// breaking changes are for internal and/or unknown operations
-			if bwc.BreakingUnknown != 0 {
-				bwc.Status = view.ScoringBlocked
-				bwc.Reason = fmt.Sprintf("Version contains %d breaking change(s) in unknown operation(s).", bwc.BreakingUnknown)
+		if bwc.Breaking == 0 {
+			// no breaking changes totally
+			if bwc.Internal2Unknown == 0 && bwc.External2Internal == 0 && bwc.External2Unknown == 0 {
+				bwc.Status = view.ScoringPassed
 			} else {
 				bwc.Status = view.ScoringPassedWithDefects
-				bwc.Reason = fmt.Sprintf("Version contains breaking change(s) in internal(%d) operation(s).", bwc.BreakingInternal)
+				bwc.Reason = fmt.Sprintf("%d operations changed audience from external to internal, %d operations changed audience from external to unknown, %d operations changed audience from internal to unknown.", bwc.External2Internal, bwc.External2Unknown, bwc.Internal2Unknown)
+			}
+		} else {
+			// there are some breaking changes
+			reasonTransitionPart := ""
+			if bwc.External2Internal != 0 || bwc.External2Unknown != 0 {
+				reasonTransitionPart += fmt.Sprintf("%d operations changed audience from external to internal, %d operations changed audience from external to unknown.", bwc.External2Internal, bwc.External2Unknown)
+			}
+
+			if bwc.BreakingExternal != 0 {
+				bwc.Status = view.ScoringBlocked
+				bwc.Reason = fmt.Sprintf("Version contains %d breaking change(s) in external operation(s).", bwc.BreakingExternal)
+				if bwc.BreakingUnknown != 0 {
+					bwc.Reason += fmt.Sprintf(" Version contains %d breaking change(s) in unknown operation(s).", bwc.BreakingUnknown)
+				}
+			} else {
+				// breaking changes are for internal and/or unknown operations
+				if bwc.BreakingUnknown != 0 {
+					bwc.Status = view.ScoringBlocked
+					bwc.Reason = fmt.Sprintf("Version contains %d breaking change(s) in unknown operation(s).", bwc.BreakingUnknown)
+				} else {
+					bwc.Status = view.ScoringPassedWithDefects
+					bwc.Reason = fmt.Sprintf("Version contains breaking change(s) in internal(%d) operation(s).", bwc.BreakingInternal)
+				}
+			}
+			if reasonTransitionPart != "" {
+				bwc.Reason += " " + reasonTransitionPart
 			}
 		}
-		if reasonTransitionPart != "" {
-			bwc.Reason += " " + reasonTransitionPart
-		}
+
+		result[ot.ApiType] = bwc
 	}
 
-	return bwc
+	return result, nil
 }
 
 func (s *scoringServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds []string) (map[string]entity.Ruleset, error) {
@@ -409,7 +443,7 @@ func (s *scoringServiceImpl) getVersionAndRevision(ctx context.Context, packageI
 	}
 
 	if rev == 0 {
-		versionView, err := s.apihubClient.GetVersion(ctx, packageId, version)
+		versionView, err := s.apihubClient.GetVersion(ctx, packageId, version, false, false)
 		if err != nil {
 			return "", 0, err
 		}

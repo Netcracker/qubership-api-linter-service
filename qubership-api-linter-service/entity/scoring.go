@@ -15,9 +15,10 @@ type VersionScore struct {
 
 	ScoredAt time.Time `pg:"scored_at,type:timestamp without time zone,notnull"`
 
-	Status view.ScoringStatus `pg:"status,type:varchar,notnull"`
-	Reason string             `pg:"reason,type:varchar"`
-	Debug  string             `pg:"debug,type:varchar"`
+	Status  view.ScoringStatus `pg:"status,type:varchar,notnull"`
+	Reasons []string           `pg:"reasons,type:character varying ARRAY,array"`
+	Debug   []string           `pg:"debug,type:character varying ARRAY,array"`
 
-	Details view.ScoringDetails `pg:"details,type:jsonb"`
+	BackwardCompatibilityDetails map[view.OpApiType]view.BackwardCompatibilityDetails `pg:"backward_compatibility_details,type:jsonb"`
+	QualityCheckDetails          map[view.OpApiType][]view.QualityCheckDetails        `pg:"quality_check_details,type:jsonb"`
 }

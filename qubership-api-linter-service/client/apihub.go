@@ -26,7 +26,7 @@ type ApihubClient interface {
 
 	GetPackagesList(ctx context.Context, packageListReq view.PackageListReq) (*view.Packages, error)
 	GetPackageById(ctx context.Context, id string) (*view.SimplePackage, error)
-	GetVersion(ctx context.Context, id, version string) (*view.VersionContent, error)
+	GetVersion(ctx context.Context, id, version string, includeSummary bool, includeOperations bool) (*view.VersionContent, error)
 	ListPackageVersions(ctx context.Context, packageId string) ([]view.PackageVersion, error)
 
 	GetVersionDocuments(ctx context.Context, packageId, version string) (*view.VersionDocuments, error)
@@ -229,8 +229,16 @@ func (a apihubClientImpl) GetPackageById(ctx context.Context, id string) (*view.
 	return &pkg, nil
 }
 
-func (a apihubClientImpl) GetVersion(ctx context.Context, id, version string) (*view.VersionContent, error) {
+func (a apihubClientImpl) GetVersion(ctx context.Context, id, version string, includeSummary bool, includeOperations bool) (*view.VersionContent, error) {
 	req := a.makeRequest(ctx)
+
+	if includeSummary {
+		req.SetQueryParam("includeSummary", strconv.FormatBool(includeSummary))
+	}
+	if includeOperations {
+		req.SetQueryParam("includeOperations", strconv.FormatBool(includeOperations))
+	}
+
 	resp, err := req.Get(fmt.Sprintf("%s/api/v3/packages/%s/versions/%s", a.apihubUrl, url.PathEscape(id), url.PathEscape(version)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get version %s for id %s: %s", version, id, err.Error())
