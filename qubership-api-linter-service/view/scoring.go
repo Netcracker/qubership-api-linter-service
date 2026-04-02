@@ -12,7 +12,7 @@ type ScoringStatus string
 const (
 	ScoringPassed            ScoringStatus = "passed"
 	ScoringPassedWithDefects ScoringStatus = "passed_with_defects"
-	ScoringBlocked           ScoringStatus = "blocked"
+	ScoringNotPassed         ScoringStatus = "not_passed"
 )
 
 type BackwardCompatibilityDetails struct {

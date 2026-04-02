@@ -79,7 +79,6 @@ func (s *scoringServiceImpl) calculateQualityCheck(ctx context.Context, packageI
 
 	result := map[view.OpApiType][]view.QualityCheckDetails{}
 
-	//var totalErrors, totalWarnings int
 	for _, doc := range lintedDocs {
 		opApiType := view.ApiTypeToOpApiType(doc.SpecificationType)
 		if opApiType == "" {
@@ -88,10 +87,6 @@ func (s *scoringServiceImpl) calculateQualityCheck(ctx context.Context, packageI
 
 		vd := s.buildValidationDetails(ctx, doc, idToRulesetMap)
 		if vd != nil {
-			/*score.Details.QualityCheck = append(score.Details.QualityCheck, *vd)
-			totalErrors += vd.ErrorsCount
-			totalWarnings += vd.WarningsCount*/
-
 			result[opApiType] = append(result[opApiType], *vd)
 
 		}
@@ -111,22 +106,22 @@ func (s *scoringServiceImpl) CalculateScore(ctx context.Context, packageId, vers
 
 	score.BackwardCompatibilityDetails, err = s.calculateBackwardsCompatibility(ctx, packageId, versionStr)
 	if err != nil {
-		score.Status = view.ScoringBlocked
+		score.Status = view.ScoringNotPassed
 		score.Reasons = append(score.Reasons, "Internal error: failed to calculate backwards compatibility details.")
 		score.Debug = append(score.Debug, err.Error())
 	}
 
 	score.QualityCheckDetails, err = s.calculateQualityCheck(ctx, packageId, version, revision)
 	if err != nil {
-		score.Status = view.ScoringBlocked
+		score.Status = view.ScoringNotPassed
 		score.Reasons = append(score.Reasons, "Internal error: failed to calculate backwards compatibility details.")
 		score.Debug = append(score.Debug, err.Error())
 	}
 
-	if score.Status != view.ScoringBlocked {
+	if score.Status != view.ScoringNotPassed {
 		for _, bwc := range score.BackwardCompatibilityDetails {
-			if bwc.Status == view.ScoringBlocked {
-				score.Status = view.ScoringBlocked
+			if bwc.Status == view.ScoringNotPassed {
+				score.Status = view.ScoringNotPassed
 			}
 			if score.Status == view.ScoringPassed && bwc.Status == view.ScoringPassedWithDefects {
 				score.Status = view.ScoringPassedWithDefects
@@ -138,8 +133,8 @@ func (s *scoringServiceImpl) CalculateScore(ctx context.Context, packageId, vers
 
 		for _, qcArr := range score.QualityCheckDetails {
 			for _, qc := range qcArr {
-				if qc.Status == view.ScoringBlocked {
-					score.Status = view.ScoringBlocked
+				if qc.Status == view.ScoringNotPassed {
+					score.Status = view.ScoringNotPassed
 				}
 				if score.Status == view.ScoringPassed && qc.Status == view.ScoringPassedWithDefects {
 					score.Status = view.ScoringPassedWithDefects
@@ -169,7 +164,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 	}
 
 	if doc.LintStatus == view.StatusError {
-		vd.Status = view.ScoringBlocked
+		vd.Status = view.ScoringNotPassed
 		vd.InternalError = doc.LintDetails
 		vd.Reason = fmt.Sprintf("Validation internal error for linter %s.", ruleset.Linter)
 		return vd
@@ -177,7 +172,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 
 	summary, err := s.lintResultRepo.GetLintResultSummary(ctx, doc.DataHash, doc.RulesetId)
 	if err != nil {
-		vd.Status = view.ScoringBlocked
+		vd.Status = view.ScoringNotPassed
 		vd.InternalError = fmt.Sprintf("failed to get lint result: %s", err)
 		vd.Reason = fmt.Sprintf("Validation internal error")
 		return vd
@@ -188,7 +183,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 
 	issues, err := makeSpectralSummary(summary.Summary)
 	if err != nil {
-		vd.Status = view.ScoringBlocked
+		vd.Status = view.ScoringNotPassed
 		vd.InternalError = fmt.Sprintf("failed to parse lint summary: %s", err)
 		vd.Reason = fmt.Sprintf("Validation internal error")
 		return vd
@@ -198,7 +193,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 	vd.WarningsCount = issues.Warning
 
 	if issues.Error > 0 {
-		vd.Status = view.ScoringBlocked
+		vd.Status = view.ScoringNotPassed
 		vd.Reason = fmt.Sprintf("Version contain %d errors for linter %s.", issues.Error, ruleset.Linter)
 	} else if issues.Warning > 0 {
 		vd.Status = view.ScoringPassedWithDefects
@@ -220,8 +215,9 @@ func (s *scoringServiceImpl) calculateBackwardsCompatibility(ctx context.Context
 	if versionContent == nil {
 		return nil, fmt.Errorf("version %s not found for package %s", version, packageId)
 	}
+
 	if versionContent.PreviousVersion == "" {
-		// TODO: check releases, etc
+		// No ability to implement generic previous version validation for all cases. Just skip BWC check.
 		return result, nil
 	}
 
@@ -238,7 +234,7 @@ func (s *scoringServiceImpl) calculateBackwardsCompatibility(ctx context.Context
 
 	// TODO: switch to ApiAudienceTransitions ???
 	// TODO: calculate breaking for audience on Apihub or builder???
-	
+
 	for _, ot := range versionContent.OperationTypes {
 		bwc := view.BackwardCompatibilityDetails{
 			Status:            view.ScoringPassed,
@@ -392,7 +388,7 @@ func (s *scoringServiceImpl) calculateBackwardsCompatibility(ctx context.Context
 			}
 
 			if bwc.BreakingExternal != 0 {
-				bwc.Status = view.ScoringBlocked
+				bwc.Status = view.ScoringNotPassed
 				bwc.Reason = fmt.Sprintf("Version contains %d breaking change(s) in external operation(s).", bwc.BreakingExternal)
 				if bwc.BreakingUnknown != 0 {
 					bwc.Reason += fmt.Sprintf(" Version contains %d breaking change(s) in unknown operation(s).", bwc.BreakingUnknown)
@@ -400,7 +396,7 @@ func (s *scoringServiceImpl) calculateBackwardsCompatibility(ctx context.Context
 			} else {
 				// breaking changes are for internal and/or unknown operations
 				if bwc.BreakingUnknown != 0 {
-					bwc.Status = view.ScoringBlocked
+					bwc.Status = view.ScoringNotPassed
 					bwc.Reason = fmt.Sprintf("Version contains %d breaking change(s) in unknown operation(s).", bwc.BreakingUnknown)
 				} else {
 					bwc.Status = view.ScoringPassedWithDefects
