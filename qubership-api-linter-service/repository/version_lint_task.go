@@ -175,7 +175,6 @@ func (r *versionLintTaskRepositoryImpl) VersionLintFailed(ctx context.Context, t
 			return err
 		}
 
-		lintedVersionExists := true
 		var ver entity.LintedVersion
 		err = tx.Model(&ver).
 			Where("package_id = ?", taskEnt.PackageId).
@@ -184,17 +183,16 @@ func (r *versionLintTaskRepositoryImpl) VersionLintFailed(ctx context.Context, t
 			Select()
 		if err != nil {
 			if errors.Is(err, pg.ErrNoRows) {
-				lintedVersionExists = false
+				return nil
 			}
 			return err
 		}
-		if lintedVersionExists {
-			ver.LintStatus = view.VersionStatusError
-			ver.LintDetails = details
-			_, err = tx.Model(&ver).WherePK().Update()
-			if err != nil {
-				return err
-			}
+
+		ver.LintStatus = view.VersionStatusError
+		ver.LintDetails = details
+		_, err = tx.Model(&ver).WherePK().Update()
+		if err != nil {
+			return err
 		}
 
 		return nil

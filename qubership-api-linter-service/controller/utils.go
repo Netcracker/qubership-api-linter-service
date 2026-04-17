@@ -32,7 +32,9 @@ func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
 	response, _ := json.Marshal(payload)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	w.Write(response)
+	if _, err := w.Write(response); err != nil {
+		log.Errorf("failed to write json response: %v", err)
+	}
 }
 
 func getStringParam(r *http.Request, p string) string {

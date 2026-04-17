@@ -6,6 +6,7 @@ import (
 )
 
 type VersionLintTask struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"version_lint_task"`
 
 	Id           string          `pg:"id,pk,type:varchar"`
@@ -25,6 +26,7 @@ type VersionLintTask struct {
 }
 
 type DocumentLintTask struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"document_lint_task"`
 
 	Id                string          `pg:"id,pk,type:varchar"`

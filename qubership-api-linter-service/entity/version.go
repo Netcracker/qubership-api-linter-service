@@ -6,6 +6,7 @@ import (
 )
 
 type LintedVersion struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"linted_version"`
 
 	PackageId   string                   `pg:"package_id,pk,type:varchar,notnull"`

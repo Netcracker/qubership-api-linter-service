@@ -3,7 +3,7 @@ package controller
 import (
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -136,7 +136,7 @@ func (c rulesetControllerImpl) CreateRuleset(w http.ResponseWriter, r *http.Requ
 			Debug:   err.Error()})
 		return
 	}
-	data, err = ioutil.ReadAll(sourcesFile)
+	data, err = io.ReadAll(sourcesFile)
 	closeErr := sourcesFile.Close()
 	if closeErr != nil {
 		log.Debugf("failed to close temporal file: %+v", err)
@@ -326,7 +326,9 @@ func (c rulesetControllerImpl) GetRulesetData(w http.ResponseWriter, r *http.Req
 		w.Header().Set("Content-Type", contentType)
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		log.Errorf("failed to write ruleset data response: %v", err)
+	}
 }
 
 func (c rulesetControllerImpl) GetRulesetActivationHistory(w http.ResponseWriter, r *http.Request) {

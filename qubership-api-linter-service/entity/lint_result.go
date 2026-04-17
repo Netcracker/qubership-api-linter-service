@@ -1,6 +1,7 @@
 package entity
 
 type LintFileResult struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"lint_file_result"`
 
 	DataHash      string                 `pg:"data_hash,pk,type:varchar,notnull"`
@@ -11,6 +12,7 @@ type LintFileResult struct {
 }
 
 type LintFileResultSummary struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"lint_file_result"`
 
 	DataHash      string                 `pg:"data_hash,pk,type:varchar,notnull"`

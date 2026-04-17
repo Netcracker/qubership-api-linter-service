@@ -17,7 +17,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/Netcracker/qubership-api-linter-service/exception"
@@ -49,7 +49,7 @@ func (l logsControllerImpl) SetLogLevel(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		RespondWithCustomError(w, &exception.CustomError{
 			Status:  http.StatusBadRequest,
@@ -96,5 +96,7 @@ func (l logsControllerImpl) CheckLogLevel(w http.ResponseWriter, r *http.Request
 	log.Info("Info level is enabled")
 	log.Debug("Debug level is enabled")
 	log.Trace("Trace level is enabled")
-	w.Write([]byte(fmt.Sprintf("Current log level is '%s'. See logs for details", log.GetLevel())))
+	if _, err := w.Write([]byte(fmt.Sprintf("Current log level is '%s'. See logs for details", log.GetLevel()))); err != nil {
+		log.Errorf("failed to write response: %v", err)
+	}
 }

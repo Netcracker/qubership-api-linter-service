@@ -1,6 +1,7 @@
 package entity
 
 type SchemaMigrationEntity struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"stored_schema_migration, alias:stored_schema_migration"`
 
 	Num      int    `pg:"num, pk, type:integer"`
@@ -11,6 +12,7 @@ type SchemaMigrationEntity struct {
 }
 
 type MigrationEntity struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"schema_migrations"`
 
 	Version int  `pg:"version, pk, type:bigint"`

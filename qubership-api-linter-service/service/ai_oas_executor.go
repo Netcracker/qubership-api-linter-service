@@ -97,12 +97,7 @@ func (s *aiOasExecutor) LintOperationForDoc(ctx context.Context, operationData s
 			// TODO: or add with empty path?
 		}
 
-		res = append(res, view.ValidationIssue{
-			Path:     iss.Path,
-			Code:     iss.Code,
-			Severity: iss.Severity,
-			Message:  iss.Message,
-		})
+		res = append(res, view.ValidationIssue(iss))
 	}
 	calculationTime := time.Since(start)
 
@@ -119,12 +114,7 @@ func (s *aiOasExecutor) DeduplicateIssues(ctx context.Context, issues []view.Val
 
 	var res []view.ValidationIssue
 	for _, iss := range dIssues {
-		res = append(res, view.ValidationIssue{
-			Path:     iss.Path,
-			Code:     iss.Code,
-			Severity: iss.Severity,
-			Message:  iss.Message,
-		})
+		res = append(res, view.ValidationIssue(iss))
 	}
 	calculationTime := time.Since(start)
 	return res, calculationTime.Milliseconds(), nil

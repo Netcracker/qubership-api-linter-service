@@ -214,7 +214,7 @@ func (v versionTaskProcessorImpl) acquireFreeTasks() {
 			running.Store(true)
 			for {
 				moreWork := v.processTask()
-				if moreWork == false {
+				if !moreWork {
 					break
 				}
 				log.Tracef("versionTaskProcessorImpl: keep on running")
@@ -275,16 +275,12 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 				switch docLintTask.Status {
 				case view.TaskStatusSuccess:
 					numSucceed++
-					break
 				case view.TaskStatusError:
 					numFailed++
-					break
 				case view.TaskStatusNotStarted, view.TaskStatusProcessing:
 					numNotReady++
-					break
 				default:
 					log.Warnf("handleDocReady(): unexpected doc lint task status: %s", docLintTask.Status)
-					break
 				}
 			}
 			if numNotReady > 0 {

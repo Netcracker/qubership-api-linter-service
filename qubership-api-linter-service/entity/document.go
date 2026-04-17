@@ -3,6 +3,7 @@ package entity
 import "github.com/Netcracker/qubership-api-linter-service/view"
 
 type LintedDocument struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"linted_document"`
 
 	PackageId         string                    `pg:"package_id,pk,type:varchar,notnull"`

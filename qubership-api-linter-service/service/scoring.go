@@ -174,7 +174,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 	if err != nil {
 		vd.Status = view.ScoringNotPassed
 		vd.InternalError = fmt.Sprintf("failed to get lint result: %s", err)
-		vd.Reason = fmt.Sprintf("Validation internal error")
+		vd.Reason = "Validation internal error"
 		return vd
 	}
 	if summary == nil {
@@ -185,7 +185,7 @@ func (s *scoringServiceImpl) buildValidationDetails(ctx context.Context, doc ent
 	if err != nil {
 		vd.Status = view.ScoringNotPassed
 		vd.InternalError = fmt.Sprintf("failed to parse lint summary: %s", err)
-		vd.Reason = fmt.Sprintf("Validation internal error")
+		vd.Reason = "Validation internal error"
 		return vd
 	}
 
@@ -291,8 +291,7 @@ func (s *scoringServiceImpl) calculateBackwardsCompatibility(ctx context.Context
 			opMap = make(map[string]string)
 		}
 		// collect operation audience for the previous version operations
-		popMap := make(map[string]string)
-		popMap, opMapErr = s.makeOperationMap(ctx, previousVersionContent.PackageId, previousVersionContent.Version, ot.ApiType)
+		popMap, opMapErr := s.makeOperationMap(ctx, previousVersionContent.PackageId, previousVersionContent.Version, ot.ApiType)
 		if opMapErr != nil {
 			popMap = make(map[string]string)
 		}

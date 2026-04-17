@@ -97,7 +97,7 @@ func main() {
 	}()
 
 	wg.Wait()
-	_ = <-initSrvStoppedChan // wait for the init srv to stop to avoid multiple servers started race condition
+	<-initSrvStoppedChan // wait for the init srv to stop to avoid multiple servers started race condition
 	log.Infof("Migration step passed, continue initialization")
 	////
 

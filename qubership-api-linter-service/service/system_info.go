@@ -307,7 +307,7 @@ func (s systemInfoServiceImpl) GetLogLevel() string {
 
 func (s systemInfoServiceImpl) setSpectralBinPath() error {
 	s.systemInfoMap[SPECTRAL_BIN_PATH] = os.Getenv(SPECTRAL_BIN_PATH)
-	if val, _ := s.systemInfoMap[SPECTRAL_BIN_PATH]; val == "" {
+	if val := s.systemInfoMap[SPECTRAL_BIN_PATH]; val == "" {
 		return fmt.Errorf("mandatory env %s is not set", SPECTRAL_BIN_PATH)
 	}
 	return nil

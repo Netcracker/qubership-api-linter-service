@@ -154,7 +154,6 @@ func (v *validationServiceImpl) GetVersionSummary(ctx context.Context, packageId
 			if summ == nil {
 				return nil, fmt.Errorf("failed to calculate spectral result summary")
 			}
-			break
 		case view.AiLinter:
 			summ, err = makeSpectralSummary(resultSummary.Summary)
 			if err != nil {
@@ -163,7 +162,6 @@ func (v *validationServiceImpl) GetVersionSummary(ctx context.Context, packageId
 			if summ == nil {
 				return nil, fmt.Errorf("failed to calculate AI OAS result summary")
 			}
-			break
 		case view.UnknownLinter:
 			return nil, fmt.Errorf("unknown linter %s", ruleset.Linter)
 		default:
@@ -267,7 +265,6 @@ func (v *validationServiceImpl) GetVersionSummary_deprecated(ctx context.Context
 			if summ == nil {
 				return nil, fmt.Errorf("failed to calculate spectral result summary")
 			}
-			break
 		case view.AiLinter:
 			continue
 		case view.UnknownLinter:
@@ -569,8 +566,6 @@ func (v *validationServiceImpl) ValidateVersion(ctx context.Context, packageId s
 	return ent.Id, nil
 }
 
-const tempFolder = "tmp"
-
 func (v *validationServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds []string) (map[string]entity.Ruleset, error) {
 	rulesetMap := make(map[string]entity.Ruleset)
 	for _, rulesetId := range rulesetIds {
@@ -589,6 +584,7 @@ func (v *validationServiceImpl) makeRulesetMap(ctx context.Context, rulesetIds [
 	return rulesetMap, nil
 }
 
+//nolint:unused // helper kept for potential task-based aggregation usage
 func makeRulesetIdsFromTasks(tasks []entity.DocumentLintTask) []string {
 	var result []string
 	for _, task := range tasks {

@@ -88,9 +88,6 @@ type OAIClientImpl struct {
 	client  openai.Client
 	model   openai.ChatModel
 	limiter *rate.Limiter
-
-	generateProblemsPrompt string
-	fixProblemsPrompt      string
 }
 
 var AiValidationIssuesOutputResponseSchema = generateSchema[view.AiValidationIssuesOutput]()

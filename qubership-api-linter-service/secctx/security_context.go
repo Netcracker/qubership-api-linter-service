@@ -9,6 +9,10 @@ import (
 
 const SystemRoleExt = "systemRole"
 
+type contextKey string
+
+const secCtxKey contextKey = "secCtx"
+
 func MakeUserContext(r *http.Request) context.Context {
 	user := auth.User(r)
 	userId := user.GetID()
@@ -19,7 +23,7 @@ func MakeUserContext(r *http.Request) context.Context {
 	apiKey := getApihubApiKey(r)
 	pat := getPersonalAccessToken(r)
 
-	return context.WithValue(r.Context(), "secCtx", securityContextImpl{
+	return context.WithValue(r.Context(), secCtxKey, securityContextImpl{
 		userId:              userId,
 		token:               token,
 		apiKey:              apiKey,
@@ -30,7 +34,7 @@ func MakeUserContext(r *http.Request) context.Context {
 }
 
 func MakeSysadminContext(ctx context.Context) context.Context {
-	return context.WithValue(ctx, "secCtx", securityContextImpl{userId: "system", isSystem: true})
+	return context.WithValue(ctx, secCtxKey, securityContextImpl{userId: "system", isSystem: true})
 }
 
 type securityContextImpl struct {
@@ -75,7 +79,7 @@ func getApihubApiKey(r *http.Request) string {
 }
 
 func IsSystem(ctx context.Context) bool {
-	val := ctx.Value("secCtx")
+	val := ctx.Value(secCtxKey)
 	if val == nil {
 		return false
 	}
@@ -83,7 +87,7 @@ func IsSystem(ctx context.Context) bool {
 }
 
 func IsSysadm(ctx context.Context) bool {
-	val := ctx.Value("secCtx")
+	val := ctx.Value(secCtxKey)
 	if val == nil {
 		return false
 	}
@@ -96,7 +100,7 @@ func IsSysadm(ctx context.Context) bool {
 }
 
 func GetUserId(ctx context.Context) string {
-	val := ctx.Value("secCtx")
+	val := ctx.Value(secCtxKey)
 	if val == nil {
 		return ""
 	}
@@ -104,7 +108,7 @@ func GetUserId(ctx context.Context) string {
 }
 
 func GetUserToken(ctx context.Context) string {
-	val := ctx.Value("secCtx")
+	val := ctx.Value(secCtxKey)
 	if val == nil {
 		return ""
 	}
@@ -112,7 +116,7 @@ func GetUserToken(ctx context.Context) string {
 }
 
 func GetApiKey(ctx context.Context) string {
-	val := ctx.Value("secCtx")
+	val := ctx.Value(secCtxKey)
 	if val == nil {
 		return ""
 	}
@@ -120,7 +124,7 @@ func GetApiKey(ctx context.Context) string {
 }
 
 func GetPersonalAccessToken(ctx context.Context) string {
-	val := ctx.Value("secCtx")
+	val := ctx.Value(secCtxKey)
 	if val == nil {
 		return ""
 	}

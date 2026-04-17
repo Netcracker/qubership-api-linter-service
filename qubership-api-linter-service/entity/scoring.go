@@ -7,6 +7,7 @@ import (
 )
 
 type VersionScore struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"version_score"`
 
 	PackageId string `pg:"package_id,pk,type:varchar,notnull"`

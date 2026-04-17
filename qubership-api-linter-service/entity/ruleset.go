@@ -6,6 +6,7 @@ import (
 )
 
 type Ruleset struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"ruleset"`
 
 	Id            string             `pg:"id,pk,type:varchar"`
@@ -21,6 +22,7 @@ type Ruleset struct {
 }
 
 type RulesetWithData struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"ruleset"`
 
 	Ruleset
@@ -28,6 +30,7 @@ type RulesetWithData struct {
 }
 
 type RulesetActivationHistory struct {
+	//nolint:unused // used by go-pg for table mapping
 	tableName struct{} `pg:"ruleset_activation_history"`
 
 	RulesetId     string    `pg:"ruleset_id,type:varchar,notnull"`
