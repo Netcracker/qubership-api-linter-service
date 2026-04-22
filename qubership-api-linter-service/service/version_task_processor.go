@@ -108,6 +108,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	}
 
 	var docTasks []entity.DocumentLintTask
+	var graphQLDocTasks []entity.DocumentLintTask
 
 	for _, doc := range docs.Documents {
 		linters := typeToLinters[doc.Type]
@@ -129,6 +130,27 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 					return
 				}
 				log.Infof("Skipping document %s for [ %s | %s ] with unsupported api type: %s", doc.Slug, task.PackageId, task.Version, doc.Type)
+				if doc.Type == view.ApiType(view.GraphqlApiType) {
+					graphQLDocTasks = append(graphQLDocTasks, entity.DocumentLintTask{
+						Id:                uuid.NewString(),
+						VersionLintTaskId: taskId,
+						PackageId:         task.PackageId,
+						Version:           task.Version,
+						Revision:          task.Revision,
+						FileId:            doc.FileId,
+						FileSlug:          doc.Slug,
+						APIType:           doc.Type,
+						Status:            status,
+						Details:           details,
+						CreatedAt:         time.Now(),
+						ExecutorId:        executorId,
+						LastActive:        nil,
+						RestartCount:      0,
+						Priority:          0,
+						LintTimeMs:        0,
+						Recalculate:       task.Recalculate,
+					})
+				}
 				continue
 			}
 
@@ -170,8 +192,13 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 			v.handleProcessingFailed(ctx, *task, err)
 			return
 		}
-		log.Infof("Version lint task for [ %s | %s ] (id = %s) processing finished, no suitable documents to lint", task.PackageId, task.Version, taskId)
-		return
+		if len(graphQLDocTasks) == 0 {
+			log.Infof("Version lint task for [ %s | %s ] (id = %s) processing finished, no suitable documents to lint", task.PackageId, task.Version, taskId)
+			return
+		} else {
+			// continue process for graphql APIs to create scoring for them
+			docTasks = append(docTasks, graphQLDocTasks...)
+		}
 	}
 
 	err = v.docRepo.SaveDocTasksAndUpdVer(ctx, docTasks, taskId)
