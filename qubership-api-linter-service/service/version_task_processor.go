@@ -130,7 +130,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 					return
 				}
 				log.Infof("Skipping document %s for [ %s | %s ] with unsupported api type: %s", doc.Slug, task.PackageId, task.Version, doc.Type)
-				if doc.Type == view.ApiType(view.GraphqlApiType) {
+				if doc.Type == view.GraphQLSchema {
 					graphQLDocTasks = append(graphQLDocTasks, entity.DocumentLintTask{
 						Id:                uuid.NewString(),
 						VersionLintTaskId: taskId,
