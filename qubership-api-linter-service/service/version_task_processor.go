@@ -141,6 +141,8 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 						FileSlug:          doc.Slug,
 						APIType:           doc.Type,
 						Status:            status,
+						Linter:            lr.Linter,
+						RulesetId:         lr.RulesetId,
 						Details:           details,
 						CreatedAt:         time.Now(),
 						ExecutorId:        executorId,
