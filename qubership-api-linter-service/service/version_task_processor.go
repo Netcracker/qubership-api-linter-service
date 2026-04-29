@@ -108,7 +108,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	}
 
 	var docTasks []entity.DocumentLintTask
-	var graphQLDocTasks []entity.DocumentLintTask
+	var graphQLSchemaFound bool
 
 	for _, doc := range docs.Documents {
 		linters := typeToLinters[doc.Type]
@@ -131,27 +131,7 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 				}
 				log.Infof("Skipping document %s for [ %s | %s ] with unsupported api type: %s", doc.Slug, task.PackageId, task.Version, doc.Type)
 				if doc.Type == view.GraphQLSchema {
-					graphQLDocTasks = append(graphQLDocTasks, entity.DocumentLintTask{
-						Id:                uuid.NewString(),
-						VersionLintTaskId: taskId,
-						PackageId:         task.PackageId,
-						Version:           task.Version,
-						Revision:          task.Revision,
-						FileId:            doc.FileId,
-						FileSlug:          doc.Slug,
-						APIType:           doc.Type,
-						Status:            status,
-						Linter:            lr.Linter,
-						RulesetId:         lr.RulesetId,
-						Details:           details,
-						CreatedAt:         time.Now(),
-						ExecutorId:        executorId,
-						LastActive:        nil,
-						RestartCount:      0,
-						Priority:          0,
-						LintTimeMs:        0,
-						Recalculate:       task.Recalculate,
-					})
+					graphQLSchemaFound = true
 				}
 				continue
 			}
@@ -189,18 +169,49 @@ func (v versionTaskProcessorImpl) processVersionLintTask(taskId string) {
 	}
 
 	if len(docTasks) == 0 {
+		log.Infof("Version lint task for [ %s | %s ] (id = %s) processing finished, no suitable documents to lint", task.PackageId, task.Version, taskId)
 		err = v.verRepo.EmptyVersionCompleted(ctx, *task)
 		if err != nil {
 			v.handleProcessingFailed(ctx, *task, err)
 			return
 		}
-		if len(graphQLDocTasks) == 0 {
-			log.Infof("Version lint task for [ %s | %s ] (id = %s) processing finished, no suitable documents to lint", task.PackageId, task.Version, taskId)
-			return
-		} else {
-			// continue process for graphql APIs to create scoring for them
-			docTasks = append(docTasks, graphQLDocTasks...)
+		if graphQLSchemaFound {
+			lintedVerEnt := &entity.LintedVersion{
+				PackageId:   task.PackageId,
+				Version:     task.Version,
+				Revision:    task.Revision,
+				LintStatus:  view.VersionStatusSuccess,
+				LintDetails: "No linted documents",
+				LintedAt:    time.Now(),
+			}
+
+			score, err := v.scoringService.CalculateScore(ctx, task.PackageId, task.Version, task.Revision, true)
+			if err != nil {
+				log.Errorf("Version scoring failed: %s. (task = %s)", err, task.Id)
+				lintedVerEnt.LintStatus = view.VersionStatusError
+				lintedVerEnt.LintDetails = fmt.Sprintf("scoring failed: %s", err)
+			}
+
+			lintedVerEnt.LintedAt = time.Now()
+
+			scoreEnt := entity.VersionScore{
+				PackageId:                    lintedVerEnt.PackageId,
+				Version:                      lintedVerEnt.Version,
+				Revision:                     lintedVerEnt.Revision,
+				ScoredAt:                     time.Now(),
+				Status:                       score.Status,
+				Reasons:                      score.Reasons,
+				Debug:                        score.Debug,
+				BackwardCompatibilityDetails: score.BackwardCompatibilityDetails,
+				QualityCheckDetails:          score.QualityCheckDetails,
+			}
+
+			err = v.verRepo.VersionLintCompleted(ctx, task.Id, lintedVerEnt, &scoreEnt)
+			if err != nil {
+				v.handleProcessingFailed(ctx, *task, err)
+			}
 		}
+		return
 	}
 
 	err = v.docRepo.SaveDocTasksAndUpdVer(ctx, docTasks, taskId)
@@ -343,7 +354,7 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 				}
 
 				// calculate even for failed lint
-				score, err = v.scoringService.CalculateScore(ctx, verLintTask.PackageId, verLintTask.Version, verLintTask.Revision)
+				score, err = v.scoringService.CalculateScore(ctx, verLintTask.PackageId, verLintTask.Version, verLintTask.Revision, false)
 				if err != nil {
 					log.Errorf("Version scoring failed: %s. (task = %s)", err, verLintTask.Id)
 					lintedVerEnt.LintStatus = view.VersionStatusError
