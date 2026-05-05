@@ -161,6 +161,11 @@ func main() {
 	cleanupService := service.NewCleanupService(cp)
 	authorizationService := service.NewAuthorizationService(apihubClient)
 
+	mcpService := service.NewMCPService(validationService, authorizationService)
+	mcpController := controller.NewMCPController(mcpService)
+	mcpHandler := mcpController.MakeMCPServer()
+	r.Handle("/api/v1/mcp/", security.SecureMCP(mcpHandler))
+
 	validationController := controller.NewValidationController(validationService, authorizationService)
 	validationResultController := controller.NewValidationResultController(validationService, authorizationService)
 	rulesetController := controller.NewRulesetController(rulesetService, authorizationService)
