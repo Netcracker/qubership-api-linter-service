@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/Netcracker/qubership-api-linter-service/secctx"
 	"github.com/Netcracker/qubership-api-linter-service/service"
@@ -20,6 +21,7 @@ type mcpControllerImpl struct {
 func (m *mcpControllerImpl) MakeMCPServer() http.Handler {
 	return mcpserver.NewStreamableHTTPServer(
 		m.mcpService.MakeMCPServer(),
+		mcpserver.WithSessionIdleTTL(15*time.Minute),
 		mcpserver.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			return secctx.MakeUserContext(r)
 		}),
