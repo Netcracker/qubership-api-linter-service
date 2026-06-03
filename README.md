@@ -30,10 +30,9 @@ The build process generates a standalone binary with all required dependencies. 
 
 ## AI agent configuration (APM)
 
-Agent skills and rules for this repository are distributed from the central store in
-[`qubership-apihub-ci`](https://github.com/Netcracker/qubership-apihub-ci) (`agent-skills/`)
-using [APM](https://microsoft.github.io/apm/). They are **not** committed here; run APM
-after cloning to populate `.cursor/` and `.claude/`:
+Generic agent packages come from [`qubership-apihub-ci/agent-packages`](https://github.com/Netcracker/qubership-apihub-ci/tree/main/agent-packages)
+via [APM](https://microsoft.github.io/apm/). Deployed `.cursor/` and `.claude/` harness trees are
+**committed**; refresh them after changing `apm.yml` or upstream packages:
 
 ```bash
 # one-time: install APM (see https://microsoft.github.io/apm/)
@@ -43,5 +42,6 @@ brew install microsoft/apm/apm   # or: pip install apm-cli
 apm install --target cursor,claude --legacy-skill-paths
 ```
 
-This reads `apm.yml`, pins versions in `apm.lock.yaml`, and deploys the skills/rules into
-`.cursor/` and `.claude/`. To update, re-run `apm install`.
+This reads `apm.yml`, updates `apm.lock.yaml`, and deploys skills/rules into `.cursor/` and
+`.claude/`. Commit the refreshed harness trees with manifest or lockfile changes. Only
+`apm_modules/` is gitignored.

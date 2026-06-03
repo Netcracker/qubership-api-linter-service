@@ -59,7 +59,7 @@ Briefly state: **root cause**, **why the change fixes it**, and confirm you did 
 |------|----------------|
 | **qubership-apihub-backend** | Runtime dependency — fetches packages, versions, documents, auth via `client/apihub.go` (`APIHUB_URL`, `APIHUB_ACCESS_TOKEN`). REST contract changes there may require linter client or behaviour updates. |
 | **qubership-apihub-ui** | Consumes linter REST endpoints for validation summaries and scoring in the portal. |
-| **qubership-apihub-ci** | Shared super-linter workflows and generic agent skills (`agent-skills/`). |
+| **qubership-apihub-ci** | Shared super-linter workflows and generic agent packages (`agent-packages/`). |
 
 When a change affects REST contracts or integration behaviour, **remind** the developer if follow-up is needed in backend or UI — this workspace may not contain those repos.
 
@@ -175,7 +175,7 @@ Full checklist: `.cursor/rules/ci-super-linter.mdc` after `apm install`.
 ## Project skills (Cursor / Claude)
 
 Generic skills and rules are provisioned by APM from the
-[CI store](https://github.com/Netcracker/qubership-apihub-ci/tree/main/agent-skills):
+[CI store](https://github.com/Netcracker/qubership-apihub-ci/tree/main/agent-packages):
 
 ```bash
 apm install --target cursor,claude --legacy-skill-paths

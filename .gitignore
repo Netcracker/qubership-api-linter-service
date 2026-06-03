@@ -6,9 +6,5 @@ go.sum
 api-linter-service/*debug*.exe
 api-linter-service/tmp
 
-# APM dependencies and deployed agent context
+# APM cache (installed package sources)
 apm_modules/
-.cursor/skills/
-.cursor/rules/
-.claude/skills/
-.claude/rules/
