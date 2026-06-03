@@ -9,7 +9,7 @@ dependencies:
     - Netcracker/qubership-apihub-ci/agent-packages/apihub-go-developer
     - Netcracker/qubership-apihub-ci/agent-packages/apihub-go-self-review
     - Netcracker/qubership-apihub-ci/agent-packages/github-ticket-implementation-planner
-    - Netcracker/qubership-apihub-ci/agent-packages/common-conventions
+    - Netcracker/qubership-apihub-ci/agent-packages/development-conventions
     - Netcracker/qubership-apihub-ci/agent-packages/go-conventions
 
 
