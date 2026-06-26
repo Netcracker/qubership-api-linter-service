@@ -5,6 +5,8 @@
 go.sum
 api-linter-service/*debug*.exe
 api-linter-service/tmp
+qubership-api-linter-service/qubership-api-linter-service
+qubership-api-linter-service/config.yaml
 
 # APM cache (installed package sources)
 apm_modules/
