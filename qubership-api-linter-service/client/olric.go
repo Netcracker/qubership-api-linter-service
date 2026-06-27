@@ -174,7 +174,7 @@ func getReplicaCount(replicaCount int) int {
 
 func getNamespace(namespace string) (string, error) {
 	if namespace == "" {
-		return "", fmt.Errorf("NAMESPACE env is not set")
+		return "", fmt.Errorf("olric namespace is not set (configure olric.namespace in config.yaml when olric.discoveryMode is lan)")
 	}
 
 	return namespace, nil

@@ -28,6 +28,23 @@ Linux/macOS: build.sh
 
 The build process generates a standalone binary with all required dependencies. Future versions will include containerization support and package management options.
 
+## Configuration
+
+The service reads application settings from `config.yaml`. By default, it looks for this file in the current working directory.
+Set `LINTER_CONFIG_FOLDER` to point the service at another directory that contains `config.yaml`.
+
+Use `qubership-api-linter-service/config.template.yaml` as the reference for supported keys.
+
+Do not commit `config.yaml`; it can contain deployment secrets such as database credentials, APIHUB access tokens, and OpenAI API keys.
+
+Only two runtime settings remain environment-variable based:
+
+- `LINTER_CONFIG_FOLDER` sets the directory that contains `config.yaml`.
+- `LOG_LEVEL` sets the initial log level before the configuration file is loaded.
+
+AI linter settings live under `linters.ai.*`. OpenAI credentials, proxy, model, and rate limits live under
+`linters.ai.openAI.*`.
+
 ## AI agent configuration (APM)
 
 Generic agent packages come from [`qubership-apihub-ci/agent-packages`](https://github.com/Netcracker/qubership-apihub-ci/tree/main/agent-packages)
