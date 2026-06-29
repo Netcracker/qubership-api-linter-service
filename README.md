@@ -30,20 +30,17 @@ The build process generates a standalone binary with all required dependencies. 
 
 ## Configuration
 
-The service reads application settings from `config.yaml`. By default, it looks for this file in the current working directory.
-Set `LINTER_CONFIG_FOLDER` to point the service at another directory that contains `config.yaml`.
+Application parameters are loaded from `config.yaml`. The configuration format,
+defaults, and examples are documented in [the template file](qubership-api-linter-service/config.template.yaml). For local development,
+use that template as a reference and create `qubership-api-linter-service/config.yaml`.
 
-Use `qubership-api-linter-service/config.template.yaml` as the reference for supported keys.
+By default, the service looks for `config.yaml` in the current working directory. Set
+`LINTER_CONFIG_FOLDER` to point to a different directory that contains the file.
 
-Do not commit `config.yaml`; it can contain deployment secrets such as database credentials, APIHUB access tokens, and OpenAI API keys.
+The remaining environment-only settings are:
 
-Only two runtime settings remain environment-variable based:
-
-- `LINTER_CONFIG_FOLDER` sets the directory that contains `config.yaml`.
-- `LOG_LEVEL` sets the initial log level before the configuration file is loaded.
-
-AI linter settings live under `linters.ai.*`. OpenAI credentials, proxy, model, and rate limits live under
-`linters.ai.openAI.*`.
+- `LINTER_CONFIG_FOLDER` - directory containing `config.yaml`; defaults to `.`.
+- `LOG_LEVEL` - initial log level; defaults to `info` when empty or invalid and can be changed at runtime via `/api/v1/debug/logs/setLevel` by a system administrator.
 
 ## AI agent configuration (APM)
 

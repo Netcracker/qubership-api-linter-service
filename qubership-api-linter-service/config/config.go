@@ -53,7 +53,7 @@ type AILinterConfig struct {
 	Workers          int `validate:"gte=1"`
 	ExcludedPackages []string
 	IncludedPackages []string
-	OpenAI           OpenAIConfig `validate:"required_if=Enabled true"`
+	OpenAI           OpenAIConfig
 }
 
 type OpenAIConfig struct {
