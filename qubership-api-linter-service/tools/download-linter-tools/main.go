@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -73,10 +74,39 @@ func main() {
 	outputRoot := flag.String("output", defaultOutputRoot, "directory for downloaded tools")
 	flag.Parse()
 
-	if err := run(context.Background(), http.DefaultClient, defaultReleaseSources, *versionsPath, *outputRoot, *targetOS, *targetArch); err != nil {
+	if err := run(context.Background(), newHTTPClient(), defaultReleaseSources, *versionsPath, *outputRoot, *targetOS, *targetArch); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot download linter tools: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func newHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = proxyForRequest
+	return &http.Client{Transport: transport}
+}
+
+func proxyForRequest(request *http.Request) (*url.URL, error) {
+	proxyURL, err := http.ProxyFromEnvironment(request)
+	if err != nil || proxyURL == nil {
+		return proxyURL, err
+	}
+	return normaliseProxyURL(proxyURL)
+}
+
+func normaliseProxyURL(proxyURL *url.URL) (*url.URL, error) {
+	proxyScheme := strings.TrimSuffix(proxyURL.Host, ":")
+	if (proxyScheme == "http" || proxyScheme == "https") && strings.HasPrefix(proxyURL.Path, "//") {
+		correctedURL, err := url.Parse(proxyScheme + ":" + proxyURL.Path)
+		if err != nil {
+			return nil, fmt.Errorf("correct duplicated proxy scheme in %q: %w", proxyURL.String(), err)
+		}
+		if correctedURL.Hostname() == "127.0.0.1" || correctedURL.Hostname() == "localhost" || correctedURL.Hostname() == "::1" {
+			return nil, nil
+		}
+		return correctedURL, nil
+	}
+	return proxyURL, nil
 }
 
 func run(ctx context.Context, client *http.Client, sources releaseSources, versionsPath, outputRoot, targetOS, targetArch string) error {

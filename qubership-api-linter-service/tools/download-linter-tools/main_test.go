@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,6 +124,39 @@ func TestResolveAssetsRejectsUnsupportedPlatform(t *testing.T) {
 	_, _, err := resolveAssets(defaultReleaseSources, toolVersions{spectral: "6.15.0", vacuum: "0.11.1"}, "resources", "windows", "arm64")
 	if err == nil || !strings.Contains(err.Error(), "unsupported target platform") {
 		t.Fatalf("resolveAssets() error = %v, want unsupported platform error", err)
+	}
+}
+
+func TestProxyForRequestCorrectsDuplicatedScheme(t *testing.T) {
+	proxyURL, err := url.Parse("http://http://proxy.example:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proxyURL.Host != "http:" || proxyURL.Path != "//proxy.example:8080" {
+		t.Fatalf("test proxy URL parsed unexpectedly: host=%q path=%q", proxyURL.Host, proxyURL.Path)
+	}
+
+	correctedURL, err := normaliseProxyURL(proxyURL)
+	if err != nil {
+		t.Fatalf("normaliseProxyURL() error = %v", err)
+	}
+	if correctedURL.String() != "http://proxy.example:8080" {
+		t.Fatalf("normaliseProxyURL() = %q", correctedURL)
+	}
+}
+
+func TestProxyForRequestIgnoresDuplicatedLoopbackProxy(t *testing.T) {
+	proxyURL, err := url.Parse("http://http://127.0.0.1:12334")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	correctedURL, err := normaliseProxyURL(proxyURL)
+	if err != nil {
+		t.Fatalf("normaliseProxyURL() error = %v", err)
+	}
+	if correctedURL != nil {
+		t.Fatalf("normaliseProxyURL() = %q", correctedURL)
 	}
 }
 
