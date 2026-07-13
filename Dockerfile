@@ -24,6 +24,8 @@ COPY qubership-api-linter-service ./qubership-api-linter-service
 
 WORKDIR /workspace/qubership-api-linter-service
 
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+
 RUN if env | grep -Eiq '^(http|https|all)_proxy=https?://https?://'; then unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; fi; \
     go run ./tools/download-linter-tools -os=${TARGETOS} -arch=${TARGETARCH}
 RUN if env | grep -Eiq '^(http|https|all)_proxy=https?://https?://'; then unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; fi; \
