@@ -46,9 +46,13 @@ linters:
     binPath: ''
     # Optional; Number of Spectral linter workers; If not set, default value: 1; Example: 4
     workers: 1
+    # Optional; Treat this linter as non-blocking: its execution failures do not affect the validation result or scoring (failure details are still stored); If not set, default value: false; Example: true
+    optional: false
   ai:
     # Optional; Enable AI-powered OAS linter; If not set, default value: false; Example: true
     enabled: false
+    # Optional; Treat this linter as non-blocking: its execution failures do not affect the validation result or scoring (failure details are still stored); If not set, default value: false; Example: true
+    optional: true
     # Optional; Number of AI linter workers; If not set, default value: 1; Example: 4
     workers: 1
     # Optional; List of package IDs to exclude from AI linting; If not set, default value: []; Example: [pkg1,pkg2]

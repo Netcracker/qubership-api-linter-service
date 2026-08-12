@@ -44,12 +44,14 @@ type LintersConfig struct {
 }
 
 type SpectralLinterConfig struct {
-	BinPath string `validate:"required"`
-	Workers int    `validate:"gte=1"`
+	BinPath  string `validate:"required"`
+	Workers  int    `validate:"gte=1"`
+	Optional bool
 }
 
 type AILinterConfig struct {
 	Enabled          bool
+	Optional         bool
 	Workers          int `validate:"gte=1"`
 	ExcludedPackages []string
 	IncludedPackages []string
