@@ -12,7 +12,7 @@ import (
 
 type DocResultRepository interface {
 	LintResultExists(ctx context.Context, dataHash string) (bool, error)
-	SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error
+	SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64, version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string, errorKind view.ErrorKind) error
 }
 
 func NewDocResultRepository(cp db.ConnectionProvider) DocResultRepository {
@@ -29,13 +29,14 @@ func (d docResultRepositoryImpl) LintResultExists(ctx context.Context, dataHash 
 }
 
 func (d docResultRepositoryImpl) SaveLintResult(ctx context.Context, docLintTaskId string, status view.LintedDocumentStatus, details string, lintTimeMs int64,
-	version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string) error {
+	version entity.LintedVersion, document entity.LintedDocument, result *entity.LintFileResult, executorId string, errorKind view.ErrorKind) error {
 	return d.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
 
 		var docLintTask *entity.DocumentLintTask
 		res, err := tx.Model(docLintTask).
 			Set("status = ?", status).
 			Set("details = ?", details).
+			Set("error_kind = ?", nullableErrorKind(errorKind)).
 			Set("last_active = now()").
 			Set("lint_time_ms = ?", lintTimeMs).
 			Where("id = ?", docLintTaskId).

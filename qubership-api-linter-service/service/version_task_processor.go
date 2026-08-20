@@ -267,6 +267,7 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 		for _, verLintTask := range verLintTasks {
 			var numSucceed int
 			var numFailed int
+			var numFailedRetriable int
 			var numNotReady int
 			for _, docLintTask := range docLintTasks {
 				if docLintTask.VersionLintTaskId != verLintTask.Id {
@@ -278,6 +279,9 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 					break
 				case view.TaskStatusError:
 					numFailed++
+					if docLintTask.ErrorKind == view.ErrorKindRetriable {
+						numFailedRetriable++
+					}
 					break
 				case view.TaskStatusNotStarted, view.TaskStatusProcessing:
 					numNotReady++
@@ -303,10 +307,16 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 				}
 
 				var score view.VersionScore
+				var errorKind view.ErrorKind
 				if numFailed > 0 {
 					log.Infof("Version lint (task = %s) is failed because of failed doc tasks", verLintTask.Id)
 					lintedVerEnt.LintStatus = view.VersionStatusError
 					lintedVerEnt.LintDetails = fmt.Sprintf("%d doc task(s) failed", numFailed)
+					if numFailed == numFailedRetriable {
+						errorKind = view.ErrorKindRetriable
+					} else {
+						errorKind = view.ErrorKindNotRetriableError
+					}
 				} else {
 					log.Infof("Version lint (task = %s) successfully completed", verLintTask.Id)
 					lintedVerEnt.LintStatus = view.VersionStatusSuccess
@@ -319,6 +329,7 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 					log.Errorf("Version scoring failed: %s. (task = %s)", err, verLintTask.Id)
 					lintedVerEnt.LintStatus = view.VersionStatusError
 					lintedVerEnt.LintDetails = fmt.Sprintf("scoring failed: %s", err)
+					errorKind = ClassifyError(err)
 				}
 				log.Infof("Version scoring status=%s. (task = %s)", score.Status, verLintTask.Id)
 
@@ -336,7 +347,7 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 					QualityCheckDetails:          score.QualityCheckDetails,
 				}
 
-				err = v.verRepo.VersionLintCompleted(ctx, verLintTask.Id, lintedVerEnt, &scoreEnt)
+				err = v.verRepo.VersionLintCompleted(ctx, verLintTask.Id, lintedVerEnt, &scoreEnt, errorKind)
 				if err != nil {
 					v.handleProcessingFailed(ctx, verLintTask, err)
 					continue
@@ -348,8 +359,9 @@ func (v versionTaskProcessorImpl) checkDocReady() {
 
 func (v versionTaskProcessorImpl) handleProcessingFailed(ctx context.Context, verLintTask entity.VersionLintTask, taskErr error) {
 	if verLintTask.RestartCount >= 2 {
-		log.Errorf("Failed to process version task %s with status = %s: %s. No more retries.", verLintTask.Id, verLintTask.Status, taskErr)
-		updErr := v.verRepo.VersionLintFailed(ctx, verLintTask.Id, fmt.Sprintf("failed to save version lint finished status: %s", taskErr))
+		errorKind := ClassifyError(taskErr)
+		log.Errorf("Failed to process version task %s with status = %s: %s (%s). No more retries.", verLintTask.Id, verLintTask.Status, taskErr, errorKind)
+		updErr := v.verRepo.VersionLintFailed(ctx, verLintTask.Id, fmt.Sprintf("failed to save version lint finished status: %s", taskErr), errorKind)
 		if updErr != nil {
 			log.Errorf("Failed to update version lint task %s status to %s: %v", verLintTask.Id, view.TaskStatusError, updErr)
 			return
