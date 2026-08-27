@@ -153,7 +153,16 @@ func (o OAIClientImpl) DeduplicateIssues(ctx context.Context, issues []view.Vali
 	}
 
 	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage("Remove duplicates(same sense) from the list of issues. Do not modify issue content. Do not add new entries."),
+		openai.SystemMessage(
+			`You filter a JSON array of OpenAPI lint issues. Return only the issues that remain.
+					Two issues are duplicates if they describe the same underlying problem in the 'message' field, even if the wording differs. When comparing messages, use the problem statement only; ignore any suggested fix or action text in the same message.
+					Keep issues that are the same kind of finding but at different 'path' values. Those are not duplicates.
+					Rules:
+					1. Do not rewrite any field. Copy the kept object byte-for-byte from the input.
+					2. Do not add issues.
+					3. Do not drop an issue unless it is a duplicate of one you keep.
+					4. If several issues are duplicates, keep the first one in input order and discard the rest.
+					5. If there are no duplicates, return the input list unchanged and in the same order.`),
 		openai.UserMessage(string(issuesStr)),
 	}
 
