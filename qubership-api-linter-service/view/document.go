@@ -8,6 +8,8 @@ const (
 	OpenAPI20Type ApiType = "openapi-2-0"
 
 	AsyncAPI30Type ApiType = "asyncapi-3-0"
+
+	GraphQLSchema ApiType = "graphql-schema"
 )
 
 type VersionDocuments struct {

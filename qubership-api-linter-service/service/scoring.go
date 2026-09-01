@@ -13,7 +13,7 @@ import (
 
 type ScoringService interface {
 	GetScoringForVersion(ctx context.Context, packageId, version string) (*view.VersionScore, error)
-	CalculateScore(ctx context.Context, packageId, version string, revision int) (view.VersionScore, error)
+	CalculateScore(ctx context.Context, packageId, version string, revision int, isGraphQLAPIType bool) (view.VersionScore, error)
 }
 
 type scoringServiceImpl struct {
@@ -94,7 +94,7 @@ func (s *scoringServiceImpl) calculateQualityCheck(ctx context.Context, packageI
 	return result, nil
 }
 
-func (s *scoringServiceImpl) CalculateScore(ctx context.Context, packageId, version string, revision int) (view.VersionScore, error) {
+func (s *scoringServiceImpl) CalculateScore(ctx context.Context, packageId, version string, revision int, isGraphQLAPIType bool) (view.VersionScore, error) {
 	score := view.VersionScore{
 		Status:                       view.ScoringPassed,
 		BackwardCompatibilityDetails: nil,
@@ -111,11 +111,13 @@ func (s *scoringServiceImpl) CalculateScore(ctx context.Context, packageId, vers
 		score.Debug = append(score.Debug, err.Error())
 	}
 
-	score.QualityCheckDetails, err = s.calculateQualityCheck(ctx, packageId, version, revision)
-	if err != nil {
-		score.Status = view.ScoringNotPassed
-		score.Reasons = append(score.Reasons, "Internal error: failed to calculate backwards compatibility details.")
-		score.Debug = append(score.Debug, err.Error())
+	if !isGraphQLAPIType {
+		score.QualityCheckDetails, err = s.calculateQualityCheck(ctx, packageId, version, revision)
+		if err != nil {
+			score.Status = view.ScoringNotPassed
+			score.Reasons = append(score.Reasons, "Internal error: failed to calculate backwards compatibility details.")
+			score.Debug = append(score.Debug, err.Error())
+		}
 	}
 
 	if score.Status != view.ScoringNotPassed {
