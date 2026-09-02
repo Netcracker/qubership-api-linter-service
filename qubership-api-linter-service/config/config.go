@@ -50,12 +50,13 @@ type SpectralLinterConfig struct {
 }
 
 type AILinterConfig struct {
-	Enabled          bool
-	Optional         bool
-	Workers          int `validate:"gte=1"`
-	ExcludedPackages []string
-	IncludedPackages []string
-	OpenAI           OpenAIConfig
+	Enabled             bool
+	Optional            bool
+	Workers             int `validate:"gte=1"`
+	ExcludedPackages    []string
+	IncludedPackages    []string
+	OpenAI              OpenAIConfig
+	DeduplicationPrompt string `validate:"required"`
 }
 
 type OpenAIConfig struct {

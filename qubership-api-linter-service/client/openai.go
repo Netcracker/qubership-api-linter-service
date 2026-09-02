@@ -28,7 +28,7 @@ func dialTimeout(network, addr string) (net.Conn, error) {
 	return net.DialTimeout(network, addr, 1800*time.Second)
 }
 
-func NewOpenaiClient(apiKey string, model string, proxy string, rateLimitRPS float64, rateLimitBurst int) (LLMClient, error) {
+func NewOpenaiClient(apiKey string, model string, proxy string, rateLimitRPS float64, rateLimitBurst int, deduplicationPrompt string) (LLMClient, error) {
 	var opts []option.RequestOption
 	if apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
@@ -80,9 +80,10 @@ func NewOpenaiClient(apiKey string, model string, proxy string, rateLimitRPS flo
 	limiter := rate.NewLimiter(rate.Limit(rateLimitRPS), rateLimitBurst)
 
 	return &OAIClientImpl{
-		client:  openai.NewClient(opts...),
-		model:   openAIModel,
-		limiter: limiter,
+		client:              openai.NewClient(opts...),
+		model:               openAIModel,
+		limiter:             limiter,
+		deduplicationPrompt: deduplicationPrompt,
 	}, nil
 }
 
@@ -93,6 +94,7 @@ type OAIClientImpl struct {
 
 	generateProblemsPrompt string
 	fixProblemsPrompt      string
+	deduplicationPrompt    string
 }
 
 var AiValidationIssuesOutputResponseSchema = generateSchema[view.AiValidationIssuesOutput]()
@@ -153,16 +155,7 @@ func (o OAIClientImpl) DeduplicateIssues(ctx context.Context, issues []view.Vali
 	}
 
 	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(
-			`You filter a JSON array of OpenAPI lint issues. Return only the issues that remain.
-					Two issues are duplicates if they describe the same underlying problem in the 'message' field, even if the wording differs. When comparing messages, use the problem statement only; ignore any suggested fix or action text in the same message.
-					Keep issues that are the same kind of finding but at different 'path' values. Those are not duplicates.
-					Rules:
-					1. Do not rewrite any field. Copy the kept object byte-for-byte from the input.
-					2. Do not add issues.
-					3. Do not drop an issue unless it is a duplicate of one you keep.
-					4. If several issues are duplicates, keep the first one in input order and discard the rest.
-					5. If there are no duplicates, return the input list unchanged and in the same order.`),
+		openai.SystemMessage(o.deduplicationPrompt),
 		openai.UserMessage(string(issuesStr)),
 	}
 

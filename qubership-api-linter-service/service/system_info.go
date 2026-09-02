@@ -48,6 +48,7 @@ type SystemInfoService interface {
 	GetAiLinterWorkers() int
 	GetAiLinterExcludedPackages() []string
 	GetAiLinterIncludedPackages() []string
+	GetAiLinterDeduplicationPrompt() string
 	GetSpectralLinterWorkers() int
 	IsSpectralLinterOptional() bool
 
@@ -221,6 +222,10 @@ func (s *systemInfoServiceImpl) GetAiLinterExcludedPackages() []string {
 
 func (s *systemInfoServiceImpl) GetAiLinterIncludedPackages() []string {
 	return s.config.Linters.AI.IncludedPackages
+}
+
+func (s *systemInfoServiceImpl) GetAiLinterDeduplicationPrompt() string {
+	return s.config.Linters.AI.DeduplicationPrompt
 }
 
 func (s *systemInfoServiceImpl) GetSpectralLinterWorkers() int {
