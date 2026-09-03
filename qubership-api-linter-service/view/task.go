@@ -9,3 +9,10 @@ const (
 	TaskStatusSuccess        TaskStatus = "success"
 	TaskStatusError          TaskStatus = "error"
 )
+
+type ErrorKind string
+
+const (
+	ErrorKindRetriable         ErrorKind = "retriable"
+	ErrorKindNotRetriableError ErrorKind = "not_retriable"
+)

@@ -158,6 +158,7 @@ func main() {
 	}
 
 	docTaskProcessor := service.NewDocTaskProcessor(docLintTaskRepository, ruleSetRepository, docResultRepository, lintResultRepository, apihubClient, spectralExecutor, aiOasExecutor, executorId, systemInfoService.GetSpectralLinterWorkers(), systemInfoService.GetAiLinterWorkers(), docTaskNotify)
+	retryValidationProcessor := service.NewRetryValidationProcessor(versionLintTaskRepository, systemInfoService.GetValidationRetryConfig(), versionTaskNotify)
 
 	validationService := service.NewValidationService(versionLintTaskRepository, versionResultRepository, lintResultRepository, ruleSetRepository, docLintTaskRepository, versionTaskProcessor, apihubClient, executorId, versionTaskNotify)
 	publishEventListener := service.NewPublishEventListener(olricProvider, validationService)
@@ -239,6 +240,7 @@ func main() {
 
 	publishEventListener.Start()
 	docTaskProcessor.Start()
+	retryValidationProcessor.Start()
 
 	knownPathPrefixes := []string{
 		"/api/",

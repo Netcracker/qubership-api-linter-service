@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -154,9 +155,11 @@ func (d docTaskProcessorImpl) handleError(ctx context.Context, task entity.Docum
 		LintedAt:    time.Now(),
 	}
 
-	err = d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusError, err.Error(),
-		lintTimeMs, verEnt, docEnt, nil, task.ExecutorId)
-	if err != nil {
+	errorKind := ClassifyError(err)
+
+	saveErr := d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusError, err.Error(),
+		lintTimeMs, verEnt, docEnt, nil, task.ExecutorId, errorKind)
+	if saveErr != nil {
 		log.Errorf("Handle error for doc task %s failed: unable to save lint result: %s", task.Id, err)
 	}
 }
@@ -473,9 +476,13 @@ func (d docTaskProcessorImpl) processDocTask(ctx context.Context, task entity.Do
 				Summary:       sumAsMap,
 			}
 		}
+		var errorKind view.ErrorKind
+		if status == view.StatusError {
+			errorKind = ClassifyError(errors.New(details))
+		}
 
-		err = d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTimeMs, verEnt, docEnt, lintFileResult, task.ExecutorId)
-		if err != nil {
+		saveErr := d.docResultRepository.SaveLintResult(context.Background(), task.Id, status, details, calcTimeMs, verEnt, docEnt, lintFileResult, task.ExecutorId, errorKind)
+		if saveErr != nil {
 			d.handleError(ctx, task, fmt.Errorf("failed to save lint result with error: %s", err), time.Since(start).Milliseconds())
 			return
 		}
@@ -527,7 +534,7 @@ func (d docTaskProcessorImpl) saveLintResultFromCache(ctx context.Context, task 
 		Summary:       cached.Summary,
 	}
 
-	err := d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusSuccess, "", lintTimeMs, verEnt, docEnt, lintFileResult, task.ExecutorId)
+	err := d.docResultRepository.SaveLintResult(ctx, task.Id, view.StatusSuccess, "", lintTimeMs, verEnt, docEnt, lintFileResult, task.ExecutorId, "")
 	if err != nil {
 		log.Errorf("Failed to save cached lint result for task %s: %s", task.Id, err)
 	}

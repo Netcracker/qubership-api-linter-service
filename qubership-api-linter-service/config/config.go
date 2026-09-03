@@ -1,11 +1,14 @@
 package config
 
+import "time"
+
 type Config struct {
 	Database            DatabaseConfig
 	TechnicalParameters TechnicalParameters
 	Security            SecurityConfig
 	Olric               OlricConfig
 	Linters             LintersConfig
+	ValidationRetry     ValidationRetryConfig
 }
 
 type DatabaseConfig struct {
@@ -41,6 +44,15 @@ type OlricConfig struct {
 type LintersConfig struct {
 	Spectral SpectralLinterConfig
 	AI       AILinterConfig
+}
+
+type ValidationRetryConfig struct {
+	Enabled     bool
+	Interval    time.Duration `validate:"gt=0"`
+	MaxAttempts int           `validate:"gte=1"`
+	MaxAge      time.Duration `validate:"gt=0"`
+	RetryDelay  time.Duration `validate:"gt=0"`
+	BatchSize   int           `validate:"gte=1"`
 }
 
 type SpectralLinterConfig struct {

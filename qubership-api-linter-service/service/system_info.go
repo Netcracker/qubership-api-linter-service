@@ -48,6 +48,7 @@ type SystemInfoService interface {
 	GetAiLinterExcludedPackages() []string
 	GetAiLinterIncludedPackages() []string
 	GetSpectralLinterWorkers() int
+	GetValidationRetryConfig() config.ValidationRetryConfig
 
 	SetProductionMode(apihubClient client.ApihubClient)
 	IsProductionMode() bool
@@ -102,6 +103,12 @@ func setDefaults() {
 	viper.SetDefault("linters.ai.workers", 1)
 	viper.SetDefault("linters.ai.openAI.rateLimitRPS", 10.0)
 	viper.SetDefault("linters.ai.openAI.rateLimitBurst", 30)
+	viper.SetDefault("validationRetry.enabled", true)
+	viper.SetDefault("validationRetry.interval", "15m")
+	viper.SetDefault("validationRetry.maxAttempts", 3)
+	viper.SetDefault("validationRetry.maxAge", "168h")
+	viper.SetDefault("validationRetry.retryDelay", "5m")
+	viper.SetDefault("validationRetry.batchSize", 50)
 }
 
 type systemInfoServiceImpl struct {
@@ -217,6 +224,10 @@ func (s *systemInfoServiceImpl) GetAiLinterIncludedPackages() []string {
 
 func (s *systemInfoServiceImpl) GetSpectralLinterWorkers() int {
 	return s.config.Linters.Spectral.Workers
+}
+
+func (s *systemInfoServiceImpl) GetValidationRetryConfig() config.ValidationRetryConfig {
+	return s.config.ValidationRetry
 }
 
 func (s *systemInfoServiceImpl) SetProductionMode(apihubClient client.ApihubClient) {

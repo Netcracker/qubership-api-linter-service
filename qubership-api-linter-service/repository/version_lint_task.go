@@ -4,14 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/Netcracker/qubership-api-linter-service/db"
 	"github.com/Netcracker/qubership-api-linter-service/entity"
 	"github.com/Netcracker/qubership-api-linter-service/exception"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/go-pg/pg/v10"
-	"net/http"
-	"strings"
-	"time"
+	"github.com/google/uuid"
 )
 
 type VersionLintTaskRepository interface {
@@ -21,10 +23,19 @@ type VersionLintTaskRepository interface {
 	IncRestartCount(ctx context.Context, taskId string) error
 	FindFreeVersionTask(ctx context.Context, executorId string) (*entity.VersionLintTask, error)
 	GetWaitingForDocTasks(ctx context.Context, executorId string) ([]entity.VersionLintTask, error)
-	VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion, score *entity.VersionScore) error
-	VersionLintFailed(ctx context.Context, taskId string, details string) error
+	VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion, score *entity.VersionScore, errorKind view.ErrorKind) error
+	VersionLintFailed(ctx context.Context, taskId string, details string, errorKind view.ErrorKind) error
 	UpdateLastActive(ctx context.Context, taskId string, executorId string) error
 	EmptyVersionCompleted(ctx context.Context, task entity.VersionLintTask) error
+	ScheduleRetriesForFailedValidations(ctx context.Context, params ValidationRetryParams) ([]entity.VersionLintTask, error)
+}
+
+type ValidationRetryParams struct {
+	MaxAttempts int
+	MaxAge      time.Duration
+	RetryDelay  time.Duration
+	BatchSize   int
+	CreatedBy   string
 }
 
 type versionLintTaskRepositoryImpl struct {
@@ -104,11 +115,12 @@ func (r *versionLintTaskRepositoryImpl) SaveVersionTask(ctx context.Context, ent
 	return nil
 }
 
-func (r *versionLintTaskRepositoryImpl) VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion, score *entity.VersionScore) error {
+func (r *versionLintTaskRepositoryImpl) VersionLintCompleted(ctx context.Context, taskId string, ver *entity.LintedVersion, score *entity.VersionScore, errorKind view.ErrorKind) error {
 	return r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
 		var taskEnt entity.VersionLintTask
 		_, err := tx.Model(&taskEnt).
 			Set("status = ?", view.TaskStatusSuccess).
+			Set("error_kind = ?", nullableErrorKind(errorKind)).
 			Set("last_active = ?", time.Now()).
 			Where("id = ?", taskId).
 			Update()
@@ -162,12 +174,81 @@ func (r *versionLintTaskRepositoryImpl) EmptyVersionCompleted(ctx context.Contex
 
 }
 
-func (r *versionLintTaskRepositoryImpl) VersionLintFailed(ctx context.Context, taskId string, details string) error {
+const retryCandidateQuery = `select *
+from version_lint_task t
+where t.error_kind = ?
+  and t.validation_retry_count < ?
+  and t.last_active > now() - make_interval(secs => ?)
+  and t.last_active < now() - make_interval(secs => ? * power(2, t.validation_retry_count))
+  and not exists (select 1 from version_lint_task n
+                   where n.package_id = t.package_id
+                     and n.version = t.version
+                     and n.revision = t.revision
+                     and n.created_at > t.created_at)
+order by t.last_active
+limit ?
+for no key update skip locked`
+
+func (r *versionLintTaskRepositoryImpl) ScheduleRetriesForFailedValidations(ctx context.Context, params ValidationRetryParams) ([]entity.VersionLintTask, error) {
+	var retryTasks []entity.VersionLintTask
+
+	err := r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
+		var candidates []entity.VersionLintTask
+		_, err := tx.Query(&candidates, retryCandidateQuery,
+			view.ErrorKindRetriable,
+			params.MaxAttempts,
+			params.MaxAge.Seconds(),
+			params.RetryDelay.Seconds(),
+			params.BatchSize)
+		if err != nil {
+			return fmt.Errorf("failed to select failed validations for retry: %w", err)
+		}
+
+		for _, c := range candidates {
+			retryTasks = append(retryTasks, entity.VersionLintTask{
+				Id:          uuid.NewString(),
+				PackageId:   c.PackageId,
+				Version:     c.Version,
+				Revision:    c.Revision,
+				Status:      view.TaskStatusNotStarted,
+				CreatedAt:   time.Now(),
+				CreatedBy:   params.CreatedBy,
+				LastActive:  time.Now(),
+				Priority:    c.Priority,
+				Recalculate: false,
+				RetryCount:  c.RetryCount + 1,
+			})
+		}
+		if len(retryTasks) == 0 {
+			return nil
+		}
+
+		_, err = tx.Model(&retryTasks).Insert()
+		if err != nil {
+			return fmt.Errorf("failed to create retry tasks: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return retryTasks, nil
+}
+
+func nullableErrorKind(errorKind view.ErrorKind) interface{} {
+	if errorKind == "" {
+		return nil
+	}
+	return string(errorKind)
+}
+
+func (r *versionLintTaskRepositoryImpl) VersionLintFailed(ctx context.Context, taskId string, details string, errorKind view.ErrorKind) error {
 	return r.cp.GetConnection().RunInTransaction(ctx, func(tx *pg.Tx) error {
 		var taskEnt entity.VersionLintTask
 		_, err := tx.Model(&taskEnt).
 			Set("status = ?", view.StatusError).
 			Set("details = ?", details).
+			Set("error_kind = ?", nullableErrorKind(errorKind)).
 			Set("last_active = ?", time.Now()).
 			Where("id = ?", taskId).
 			Update()
