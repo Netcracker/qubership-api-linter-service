@@ -125,7 +125,7 @@ func main() {
 		systemInfoService.SetProductionMode(apihubClient)
 	})
 
-	authHandler, err := security.NewAuthHandler(apihubClient, resp)
+	authenticator, err := security.NewAuthenticator(apihubClient, resp)
 	if err != nil {
 		log.Fatalf("Failed to setup go guardian: %s", err.Error())
 	}
@@ -170,7 +170,7 @@ func main() {
 	mcpService := service.NewMCPService(validationService, authorizationService)
 	mcpController := controller.NewMCPController(mcpService)
 	mcpHandler := mcpController.MakeMCPServer()
-	r.Handle("/api/v1/mcp/", authHandler.SecureMCP(mcpHandler))
+	r.Handle("/api/v1/mcp/", authenticator.SecureMCP(mcpHandler))
 
 	validationController := controller.NewValidationController(validationService, authorizationService, resp)
 	validationResultController := controller.NewValidationResultController(validationService, authorizationService, resp)
@@ -181,36 +181,36 @@ func main() {
 	linterController := controller.NewLinterController(linterConfigService, resp)
 	scoringController := controller.NewScoringController(scoringService, authorizationService, resp)
 
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", authHandler.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/bulkValidation", authHandler.Secure(validationController.StartBulkValidation)).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/bulkValidation/{jobId}", authHandler.Secure(validationController.GetBulkValidationStatus)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation", authenticator.Secure(validationController.ValidateVersion)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/bulkValidation", authenticator.Secure(validationController.StartBulkValidation)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/bulkValidation/{jobId}", authenticator.Secure(validationController.GetBulkValidationStatus)).Methods(http.MethodGet)
 
 	// Validation result
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", authHandler.Secure(validationResultController.GetValidationSummaryForVersion_deprecated)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v2/packages/{packageId}/versions/{version}/validation/summary", authHandler.Secure(validationResultController.GetValidationSummaryForVersion)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", authHandler.Secure(validationResultController.GetValidationResultForDocument_deprecated)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v2/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", authHandler.Secure(validationResultController.GetValidationResultForDocument)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/summary", authenticator.Secure(validationResultController.GetValidationSummaryForVersion_deprecated)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v2/packages/{packageId}/versions/{version}/validation/summary", authenticator.Secure(validationResultController.GetValidationSummaryForVersion)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", authenticator.Secure(validationResultController.GetValidationResultForDocument_deprecated)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v2/packages/{packageId}/versions/{version}/validation/documents/{slug}/details", authenticator.Secure(validationResultController.GetValidationResultForDocument)).Methods(http.MethodGet)
 
 	// Scoring
-	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/scoring", authHandler.Secure(scoringController.GetScoringForVersion)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/packages/{packageId}/versions/{version}/scoring", authenticator.Secure(scoringController.GetScoringForVersion)).Methods(http.MethodGet)
 
 	// Linters
-	r.HandleFunc("/api/v1/linters", authHandler.Secure(linterController.ListLinters)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/linters", authenticator.Secure(linterController.ListLinters)).Methods(http.MethodGet)
 
 	// Ruleset management
-	r.HandleFunc("/api/v1/rulesets", authHandler.Secure(rulesetController.CreateRuleset)).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", authHandler.Secure(rulesetController.ActivateRuleset)).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/rulesets", authHandler.Secure(rulesetController.ListRulesets)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", authHandler.Secure(rulesetController.GetRuleset)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/data", authHandler.NoSecure(rulesetController.GetRulesetData)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", authHandler.Secure(rulesetController.GetRulesetActivationHistory)).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", authHandler.Secure(rulesetController.DeleteRuleset)).Methods(http.MethodDelete)
+	r.HandleFunc("/api/v1/rulesets", authenticator.Secure(rulesetController.CreateRuleset)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", authenticator.Secure(rulesetController.ActivateRuleset)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/rulesets", authenticator.Secure(rulesetController.ListRulesets)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", authenticator.Secure(rulesetController.GetRuleset)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/data", authenticator.NoSecure(rulesetController.GetRulesetData)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}/activation", authenticator.Secure(rulesetController.GetRulesetActivationHistory)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/rulesets/{ruleset_id}", authenticator.Secure(rulesetController.DeleteRuleset)).Methods(http.MethodDelete)
 
-	r.HandleFunc("/api/v1/debug/logs/setLevel", authHandler.Secure(logsController.SetLogLevel)).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/debug/logs/checkLevel", authHandler.Secure(logsController.CheckLogLevel)).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/debug/logs/setLevel", authenticator.Secure(logsController.SetLogLevel)).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/debug/logs/checkLevel", authenticator.Secure(logsController.CheckLogLevel)).Methods(http.MethodGet)
 
 	// Test data cleanup
-	r.HandleFunc("/api/internal/clear/{testId}", authHandler.Secure(cleanupController.ClearTestData)).Methods(http.MethodDelete)
+	r.HandleFunc("/api/internal/clear/{testId}", authenticator.Secure(cleanupController.ClearTestData)).Methods(http.MethodDelete)
 
 	// Service endpoints
 	r.HandleFunc("/live", healthController.HandleLiveRequest).Methods(http.MethodGet)

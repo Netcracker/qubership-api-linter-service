@@ -17,30 +17,30 @@ import (
 	_ "github.com/shaj13/libcache/lru"
 )
 
-type AuthHandler struct {
+type Authenticator struct {
 	responder      responder.Responder
 	strategy       union.Union
 	apiKeyStrategy auth.Strategy
 }
 
-func NewAuthHandler(apihubClient client.ApihubClient, r responder.Responder) (*AuthHandler, error) {
+func NewAuthenticator(apihubClient client.ApihubClient, r responder.Responder) (Authenticator, error) {
 	if apihubClient == nil {
-		return nil, fmt.Errorf("apihubClient is nil")
+		return Authenticator{}, fmt.Errorf("apihubClient is nil")
 	}
 
 	ctx := secctx.MakeSysadminContext(context.Background())
 
 	rsaPublicKeyView, err := apihubClient.GetRsaPublicKey(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("rsa public key error - %s", err.Error())
+		return Authenticator{}, fmt.Errorf("rsa public key error - %s", err.Error())
 	}
 	if rsaPublicKeyView == nil {
-		return nil, fmt.Errorf("rsa public key is empty")
+		return Authenticator{}, fmt.Errorf("rsa public key is empty")
 	}
 
 	rsaPublicKey, err := x509.ParsePKCS1PublicKey(rsaPublicKeyView.Value)
 	if err != nil {
-		return nil, fmt.Errorf("ParsePKCS1PublicKey has error - %s", err.Error())
+		return Authenticator{}, fmt.Errorf("ParsePKCS1PublicKey has error - %s", err.Error())
 	}
 
 	keeper := jwt.StaticSecret{
@@ -61,7 +61,7 @@ func NewAuthHandler(apihubClient client.ApihubClient, r responder.Responder) (*A
 	patStrategy := NewApihubPATStrategy(apihubClient)
 	strategy := union.New(jwtStrategy, apihubApiKeyStrategy, cookieTokenStrategy, patStrategy)
 
-	return &AuthHandler{
+	return Authenticator{
 		responder:      r,
 		strategy:       strategy,
 		apiKeyStrategy: apihubApiKeyStrategy,
