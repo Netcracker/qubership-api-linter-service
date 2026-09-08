@@ -16,7 +16,7 @@ type ValidationResultController interface {
 	GetValidationResultForDocument_deprecated(w http.ResponseWriter, r *http.Request)
 }
 
-func NewValidationResultController(validationService service.ValidationService, authorizationService service.AuthorizationService, resp *responder.Responder) ValidationResultController {
+func NewValidationResultController(validationService service.ValidationService, authorizationService service.AuthorizationService, resp responder.Responder) ValidationResultController {
 	return &validationResultControllerImpl{
 		validationService:    validationService,
 		authorizationService: authorizationService,
@@ -27,7 +27,7 @@ func NewValidationResultController(validationService service.ValidationService, 
 type validationResultControllerImpl struct {
 	validationService    service.ValidationService
 	authorizationService service.AuthorizationService
-	responder            *responder.Responder
+	responder            responder.Responder
 }
 
 func (v validationResultControllerImpl) GetValidationSummaryForVersion(w http.ResponseWriter, r *http.Request) {

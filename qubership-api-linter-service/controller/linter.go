@@ -13,10 +13,10 @@ type LinterController interface {
 
 type linterControllerImpl struct {
 	linterConfigService service.LinterConfigService
-	responder           *responder.Responder
+	responder           responder.Responder
 }
 
-func NewLinterController(linterConfigService service.LinterConfigService, resp *responder.Responder) LinterController {
+func NewLinterController(linterConfigService service.LinterConfigService, resp responder.Responder) LinterController {
 	return &linterControllerImpl{
 		linterConfigService: linterConfigService,
 		responder:           resp,

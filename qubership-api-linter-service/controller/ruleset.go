@@ -30,10 +30,10 @@ type RulesetController interface {
 type rulesetControllerImpl struct {
 	rulesetService       service.RulesetService
 	authorizationService service.AuthorizationService
-	responder            *responder.Responder
+	responder            responder.Responder
 }
 
-func NewRulesetController(rulesetService service.RulesetService, authorizationService service.AuthorizationService, resp *responder.Responder) RulesetController {
+func NewRulesetController(rulesetService service.RulesetService, authorizationService service.AuthorizationService, resp responder.Responder) RulesetController {
 	return &rulesetControllerImpl{
 		rulesetService:       rulesetService,
 		authorizationService: authorizationService,

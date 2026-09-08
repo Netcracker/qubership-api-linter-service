@@ -17,10 +17,10 @@ type cleanupControllerImpl struct {
 	cleanupService       service.CleanupService
 	authorizationService service.AuthorizationService
 	systemInfoService    service.SystemInfoService
-	responder            *responder.Responder
+	responder            responder.Responder
 }
 
-func NewCleanupController(cleanupService service.CleanupService, authorizationService service.AuthorizationService, systemInfoService service.SystemInfoService, resp *responder.Responder) CleanupController {
+func NewCleanupController(cleanupService service.CleanupService, authorizationService service.AuthorizationService, systemInfoService service.SystemInfoService, resp responder.Responder) CleanupController {
 	return &cleanupControllerImpl{
 		cleanupService:       cleanupService,
 		authorizationService: authorizationService,

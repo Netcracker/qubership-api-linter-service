@@ -19,7 +19,7 @@ type ValidationController interface {
 	GetBulkValidationStatus(w http.ResponseWriter, r *http.Request)
 }
 
-func NewValidationController(validationService service.ValidationService, authorizationService service.AuthorizationService, resp *responder.Responder) ValidationController {
+func NewValidationController(validationService service.ValidationService, authorizationService service.AuthorizationService, resp responder.Responder) ValidationController {
 	return &validationControllerImpl{
 		validationService:    validationService,
 		authorizationService: authorizationService,
@@ -30,7 +30,7 @@ func NewValidationController(validationService service.ValidationService, author
 type validationControllerImpl struct {
 	validationService    service.ValidationService
 	authorizationService service.AuthorizationService
-	responder            *responder.Responder
+	responder            responder.Responder
 }
 
 func (v *validationControllerImpl) ValidateVersion(w http.ResponseWriter, r *http.Request) {

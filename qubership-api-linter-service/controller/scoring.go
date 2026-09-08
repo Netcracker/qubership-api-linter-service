@@ -13,7 +13,7 @@ type ScoringController interface {
 	GetScoringForVersion(w http.ResponseWriter, r *http.Request)
 }
 
-func NewScoringController(scoringService service.ScoringService, authorizationService service.AuthorizationService, resp *responder.Responder) ScoringController {
+func NewScoringController(scoringService service.ScoringService, authorizationService service.AuthorizationService, resp responder.Responder) ScoringController {
 	return &scoringControllerImpl{
 		scoringService:       scoringService,
 		authorizationService: authorizationService,
@@ -24,7 +24,7 @@ func NewScoringController(scoringService service.ScoringService, authorizationSe
 type scoringControllerImpl struct {
 	scoringService       service.ScoringService
 	authorizationService service.AuthorizationService
-	responder            *responder.Responder
+	responder            responder.Responder
 }
 
 func (s scoringControllerImpl) GetScoringForVersion(w http.ResponseWriter, r *http.Request) {
