@@ -56,7 +56,7 @@ type AILinterConfig struct {
 	ExcludedPackages    []string
 	IncludedPackages    []string
 	OpenAI              OpenAIConfig
-	DeduplicationPrompt string `validate:"required"`
+	DeduplicationPrompt string
 }
 
 type OpenAIConfig struct {
