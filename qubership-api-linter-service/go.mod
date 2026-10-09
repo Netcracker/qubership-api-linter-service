@@ -12,6 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
+	github.com/hashicorp/memberlist v0.1.5
 	github.com/invopop/jsonschema v0.14.0
 	github.com/mark3labs/mcp-go v0.58.0
 	github.com/openai/openai-go/v3 v3.66.0

@@ -14,23 +14,32 @@ import (
 	"github.com/buraksezer/olric"
 	discovery "github.com/buraksezer/olric-cloud-plugin/lib"
 	"github.com/buraksezer/olric/config"
+	"github.com/hashicorp/memberlist"
 	log "github.com/sirupsen/logrus"
 )
 
 type OlricProvider interface {
 	Get() *olric.Olric
 	GetBindAddr() string
+	// NodeEvents returns a channel that receives memberlist membership events.
+	// Consumers use NodeJoin events to detect when a peer reconnects after a
+	// network partition and re-subscribe to DTopic listeners.
+	NodeEvents() <-chan memberlist.NodeEvent
 }
 
 type olricProviderImpl struct {
-	wg     sync.WaitGroup
-	cfg    *config.Config
-	olricC *olric.Olric
+	wg         sync.WaitGroup
+	cfg        *config.Config
+	olricC     *olric.Olric
+	nodeEvents chan memberlist.NodeEvent
 }
 
 const olricBindAddr = "0.0.0.0"
 
+const nodeEventChannelSize = 64
+
 func NewOlricProvider(olricConfig sysconfig.OlricConfig, apihubUrl string) (OlricProvider, error) {
+	log.Infof("OlricProvider: initializing (discoveryMode=%s apihubUrl=%s)", olricConfig.DiscoveryMode, apihubUrl)
 	prov := &olricProviderImpl{wg: sync.WaitGroup{}}
 
 	var err error
@@ -39,15 +48,23 @@ func NewOlricProvider(olricConfig sysconfig.OlricConfig, apihubUrl string) (Olri
 	if err != nil {
 		return nil, err
 	}
+	log.Infof("OlricProvider: config built (bindAddr=%s bindPort=%d memberlistBindPort=%d)",
+		prov.cfg.BindAddr, prov.cfg.BindPort, prov.cfg.MemberlistConfig.BindPort)
+
+	prov.nodeEvents = make(chan memberlist.NodeEvent, nodeEventChannelSize)
+	prov.cfg.MemberlistConfig.Events = &memberlist.ChannelEventDelegate{Ch: prov.nodeEvents}
+	log.Infof("OlricProvider: memberlist event delegate registered (channelBuffer=%d)", nodeEventChannelSize)
 
 	prov.wg.Add(1)
 
 	prov.cfg.Started = prov.startCallback
 
+	log.Infof("OlricProvider: creating Olric node")
 	prov.olricC, err = olric.New(prov.cfg)
 	if err != nil {
 		return nil, err
 	}
+	log.Infof("OlricProvider: Olric node created, starting cluster join in background")
 
 	go func() {
 		err = prov.olricC.Start()
@@ -60,17 +77,24 @@ func NewOlricProvider(olricConfig sysconfig.OlricConfig, apihubUrl string) (Olri
 }
 
 func (op *olricProviderImpl) startCallback() {
+	log.Infof("OlricProvider: node joined cluster successfully (bindAddr=%s bindPort=%d)", op.cfg.BindAddr, op.cfg.BindPort)
 	op.wg.Done()
 }
 
 func (op *olricProviderImpl) Get() *olric.Olric {
+	log.Infof("OlricProvider.Get: waiting for node to be ready")
 	op.wg.Wait()
+	log.Infof("OlricProvider.Get: node is ready, returning instance")
 	return op.olricC
 }
 
 func (op *olricProviderImpl) GetBindAddr() string {
 	op.wg.Wait()
 	return op.cfg.BindAddr
+}
+
+func (op *olricProviderImpl) NodeEvents() <-chan memberlist.NodeEvent {
+	return op.nodeEvents
 }
 
 func getConfig(olricConfig sysconfig.OlricConfig, apihubUrl string) (*config.Config, error) {
