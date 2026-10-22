@@ -3,7 +3,6 @@ module github.com/Netcracker/qubership-api-linter-service
 go 1.26.5
 
 require (
-	github.com/AsaiYusuke/jsonpath/v2 v2.2.0
 	github.com/Netcracker/qubership-apihub-commons-go v0.0.1
 	github.com/buraksezer/olric v0.4.7
 	github.com/buraksezer/olric-cloud-plugin v0.3.0-beta.4
