@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Netcracker/qubership-api-linter-service/client"
 	"github.com/Netcracker/qubership-api-linter-service/exception"
@@ -13,7 +14,6 @@ import (
 	"github.com/Netcracker/qubership-api-linter-service/utils"
 	"github.com/Netcracker/qubership-api-linter-service/view"
 	"github.com/buraksezer/olric"
-	"github.com/hashicorp/memberlist"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -22,21 +22,23 @@ type PublishEventListener interface {
 	listen(message olric.DTopicMessage)
 }
 
-func NewPublishEventListener(op client.OlricProvider, validationService ValidationService) PublishEventListener {
+func NewPublishEventListener(op client.OlricProvider, validationService ValidationService, membershipPollInterval time.Duration) PublishEventListener {
 	pel := publishEventListenerImpl{
-		op:                op,
-		validationService: validationService,
-		isReadyWg:         sync.WaitGroup{},
+		op:                     op,
+		validationService:      validationService,
+		membershipPollInterval: membershipPollInterval,
+		isReadyWg:              sync.WaitGroup{},
 	}
 	return &pel
 }
 
 type publishEventListenerImpl struct {
-	op                    client.OlricProvider
-	validationService     ValidationService
-	versionPublishedTopic *olric.DTopic
-	listenerID            uint64
-	isReadyWg             sync.WaitGroup
+	op                     client.OlricProvider
+	validationService      ValidationService
+	membershipPollInterval time.Duration
+	versionPublishedTopic  *olric.DTopic
+	listenerID             uint64
+	isReadyWg              sync.WaitGroup
 }
 
 func (p *publishEventListenerImpl) Start() {
@@ -119,19 +121,58 @@ func (p *publishEventListenerImpl) initVersionPublishedDTopic() {
 	p.isReadyWg.Done()
 }
 
+// watchAndResubscribe polls cluster membership because Olric overwrites the memberlist event delegate on start.
+// A peer that rejoins gets a new member ID, so any ID absent from the previous snapshot means a join.
 func (p *publishEventListenerImpl) watchAndResubscribe() {
-	for event := range p.op.NodeEvents() {
-		switch event.Event {
-		case memberlist.NodeLeave:
-			log.Warnf("PublishEventListener: peer %s left cluster, topic %s delivery is interrupted until it rejoins", event.Node.Name, VersionPublishedTopicName)
-		case memberlist.NodeJoin:
-			log.Infof("PublishEventListener: peer %s joined cluster, re-subscribing to topic %s", event.Node.Name, VersionPublishedTopicName)
+	previous, err := p.op.ClusterMembers()
+	if err != nil {
+		log.Errorf("PublishEventListener: failed to read initial cluster membership: %v", err)
+	}
+
+	ticker := time.NewTicker(p.membershipPollInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		current, err := p.op.ClusterMembers()
+		if err != nil {
+			log.Errorf("PublishEventListener: failed to read cluster membership, will retry in %s: %v", p.membershipPollInterval, err)
+			continue
+		}
+		if previous == nil {
+			previous = current
+			continue
+		}
+
+		joined, left := diffMembers(previous, current)
+		previous = current
+
+		for _, name := range left {
+			log.Warnf("PublishEventListener: peer %s left cluster, topic %s delivery is interrupted until it rejoins", name, VersionPublishedTopicName)
+		}
+		for _, name := range joined {
+			log.Infof("PublishEventListener: peer %s joined cluster, re-subscribing to topic %s", name, VersionPublishedTopicName)
+		}
+		if len(joined) > 0 {
 			p.resubscribe()
-		case memberlist.NodeUpdate:
-			log.Infof("PublishEventListener: peer %s metadata updated", event.Node.Name)
 		}
 	}
-	log.Infof("PublishEventListener: node-event channel closed, watch loop exiting")
+}
+
+// diffMembers returns members present only in current (joined) and only in previous (left).
+func diffMembers(previous, current map[uint64]string) (joined, left map[uint64]string) {
+	joined = make(map[uint64]string)
+	left = make(map[uint64]string)
+	for id, name := range current {
+		if _, ok := previous[id]; !ok {
+			joined[id] = name
+		}
+	}
+	for id, name := range previous {
+		if _, ok := current[id]; !ok {
+			left[id] = name
+		}
+	}
+	return joined, left
 }
 
 func (p *publishEventListenerImpl) resubscribe() {

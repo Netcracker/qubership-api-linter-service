@@ -14,29 +14,26 @@ import (
 	"github.com/buraksezer/olric"
 	discovery "github.com/buraksezer/olric-cloud-plugin/lib"
 	"github.com/buraksezer/olric/config"
-	"github.com/hashicorp/memberlist"
 	log "github.com/sirupsen/logrus"
 )
 
 type OlricProvider interface {
 	Get() *olric.Olric
 	GetBindAddr() string
-	// NodeEvents returns a channel that receives memberlist membership events.
-	// Consumers use NodeJoin events to detect when a peer reconnects after a
-	// network partition and re-subscribe to DTopic listeners.
-	NodeEvents() <-chan memberlist.NodeEvent
+	// ClusterMembers returns the current cluster members as seen by this node, keyed by member ID.
+	// A peer that restarts or rejoins after a network partition gets a new ID,
+	// so consumers can compare snapshots to detect it and re-subscribe to DTopic listeners.
+	// Olric v0.4.7 overwrites MemberlistConfig.Events on start, so membership events cannot be used for this.
+	ClusterMembers() (map[uint64]string, error)
 }
 
 type olricProviderImpl struct {
-	wg         sync.WaitGroup
-	cfg        *config.Config
-	olricC     *olric.Olric
-	nodeEvents chan memberlist.NodeEvent
+	wg     sync.WaitGroup
+	cfg    *config.Config
+	olricC *olric.Olric
 }
 
 const olricBindAddr = "0.0.0.0"
-
-const nodeEventChannelSize = 64
 
 func NewOlricProvider(olricConfig sysconfig.OlricConfig, apihubUrl string) (OlricProvider, error) {
 	log.Infof("OlricProvider: initializing (discoveryMode=%s apihubUrl=%s)", olricConfig.DiscoveryMode, apihubUrl)
@@ -50,10 +47,6 @@ func NewOlricProvider(olricConfig sysconfig.OlricConfig, apihubUrl string) (Olri
 	}
 	log.Infof("OlricProvider: config built (bindAddr=%s bindPort=%d memberlistBindPort=%d)",
 		prov.cfg.BindAddr, prov.cfg.BindPort, prov.cfg.MemberlistConfig.BindPort)
-
-	prov.nodeEvents = make(chan memberlist.NodeEvent, nodeEventChannelSize)
-	prov.cfg.MemberlistConfig.Events = &memberlist.ChannelEventDelegate{Ch: prov.nodeEvents}
-	log.Infof("OlricProvider: memberlist event delegate registered (channelBuffer=%d)", nodeEventChannelSize)
 
 	prov.wg.Add(1)
 
@@ -93,8 +86,16 @@ func (op *olricProviderImpl) GetBindAddr() string {
 	return op.cfg.BindAddr
 }
 
-func (op *olricProviderImpl) NodeEvents() <-chan memberlist.NodeEvent {
-	return op.nodeEvents
+func (op *olricProviderImpl) ClusterMembers() (map[uint64]string, error) {
+	st, err := op.Get().Stats()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get olric stats: %w", err)
+	}
+	members := make(map[uint64]string, len(st.ClusterMembers))
+	for id, m := range st.ClusterMembers {
+		members[uint64(id)] = m.Name
+	}
+	return members, nil
 }
 
 func getConfig(olricConfig sysconfig.OlricConfig, apihubUrl string) (*config.Config, error) {
